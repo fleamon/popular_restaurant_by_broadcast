@@ -1,9 +1,16 @@
 -- 백안맛지도 Supabase 초기 스키마
 -- 실행: Supabase Dashboard → SQL Editor 전체 붙여넣기 또는 psql로 전체 실행
--- 전제: Supabase 기본 확장 pgcrypto, uuid-ossp 활성화
 
 -- ─────────────────────────────────────────────────────────────────────
--- 0. 공통 트리거: updated_at 자동 갱신
+-- 0. 필수 확장
+--    - pg_trgm: 가게명 LIKE/유사도 검색용 gin_trgm_ops 인덱스
+--    - pgcrypto: gen_random_uuid() 등 (Supabase 기본 포함이지만 명시)
+-- ─────────────────────────────────────────────────────────────────────
+create extension if not exists pg_trgm;
+create extension if not exists pgcrypto;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- 1. 공통 트리거: updated_at 자동 갱신
 -- ─────────────────────────────────────────────────────────────────────
 create or replace function set_updated_at()
 returns trigger language plpgsql as $$
@@ -62,7 +69,6 @@ create trigger trg_restaurants_updated before update on public.restaurants
   for each row execute function set_updated_at();
 create index if not exists idx_restaurants_region on public.restaurants (sido, sigungu, dong);
 create index if not exists idx_restaurants_name_trgm on public.restaurants using gin (current_name gin_trgm_ops);
--- pg_trgm 확장이 없으면 Supabase에서 먼저 활성화: create extension if not exists pg_trgm;
 comment on table public.restaurants is '맛집 마스터. 상호/주소 변경 이력 컬럼 포함';
 
 -- ─────────────────────────────────────────────────────────────────────
