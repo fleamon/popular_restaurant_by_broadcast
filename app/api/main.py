@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from .routers import admin, channels, restaurants, votes
 
@@ -23,6 +24,11 @@ app.include_router(restaurants.router)
 app.include_router(channels.router)
 app.include_router(votes.router)
 app.include_router(admin.router)
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/healthz")
