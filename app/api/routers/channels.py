@@ -20,4 +20,6 @@ def list_channels(channel_type: str | None = Query(default=None)) -> list[dict]:
 @router.get("/ranking")
 def channel_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
     sb = get_anon_client()
-    return sb.table("v_channel_score").select("*").order("net_score", desc=True).limit(limit).execute().data or []
+    rows = sb.table("v_channel_score").select("*").order("net_score", desc=True).limit(limit).execute().data or []
+    # 뷰는 channel_id 로 노출하지만, 프론트 RankingRow 는 id 를 기대하므로 정규화.
+    return [{**r, "id": r["channel_id"]} for r in rows]
