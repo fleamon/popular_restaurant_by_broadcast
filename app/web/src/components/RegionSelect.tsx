@@ -32,7 +32,7 @@ export default function RegionSelect({ value, onChange }: Props) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none"
+      className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold text-black focus:border-brand focus:outline-none"
     >
       {SIDO.map((s) => (
         <option key={s} value={s === "전체" ? "" : s}>

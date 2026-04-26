@@ -13,7 +13,7 @@ export default function ChannelFilter({ channels, value, onChange }: Props) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
-      className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none"
+      className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold text-black focus:border-brand focus:outline-none"
     >
       <option value="">전체 채널</option>
       {channels.map((c) => (

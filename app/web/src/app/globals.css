@@ -7,5 +7,31 @@
 
 html, body { height: 100%; }
 body {
-  @apply bg-white text-neutral-900 font-sans antialiased;
+  @apply bg-white font-sans antialiased;
+  color: rgb(44 66 163);
+  font-weight: 600;
 }
+
+/* ── 전역 텍스트 색상 통일 (R:44 G:66 B:163) ─────────────────────────
+   브랜드/뉴트럴 텍스트 클래스를 모두 동일 색으로.
+   text-brand-fg(=white) / text-white / text-black / text-red-* 은
+   대비·UI 어포던스가 필요한 곳이라 남겨둠. */
+.text-brand,
+.text-neutral-300,
+.text-neutral-400,
+.text-neutral-500,
+.text-neutral-600,
+.text-neutral-700,
+.text-neutral-800,
+.text-neutral-900 {
+  color: rgb(44 66 163) !important;
+}
+
+/* ── 글씨 굵기 한 단계 강화 ──────────────────────────────────────────
+   기존 weight 보다 1 tier 위로 끌어올림. Pretendard Variable 이 100~900
+   가변 폰트라 깔끔하게 적용됨. */
+.font-normal    { font-weight: 600 !important; }
+.font-medium    { font-weight: 700 !important; }
+.font-semibold  { font-weight: 800 !important; }
+.font-bold      { font-weight: 800 !important; }
+.font-extrabold { font-weight: 900 !important; }
