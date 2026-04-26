@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 
 import ChannelFilter from "@/components/ChannelFilter";
@@ -82,9 +81,30 @@ export default function HomePage() {
           onClick={triggerSearch}
           aria-label="검색"
           title="검색"
-          className="relative h-11 w-11 shrink-0 rounded-md hover:bg-brand-surface transition-colors"
+          className="shrink-0 hover:opacity-70 transition-opacity"
         >
-          <Image src="/icon-search.png" alt="" fill sizes="44px" className="object-contain" />
+          {/* 인라인 SVG — 어떤 크기에서도 선명. 높이만 input 라인에 맞춤 */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 200 100"
+            role="img"
+            aria-label="검색"
+            className="h-11 w-auto"
+          >
+            <rect width="200" height="100" rx="14" fill="rgb(44 66 163)" />
+            <text
+              x="100"
+              y="50"
+              fill="#FFFFFF"
+              fontFamily="'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', system-ui, sans-serif"
+              fontSize="50"
+              fontWeight="900"
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              검색
+            </text>
+          </svg>
         </button>
       </div>
 
