@@ -5,9 +5,11 @@ import { usePathname } from "next/navigation";
 
 type Tab = { href: string; label: string };
 
+// '검색' 탭이 홈("/") 화면을 겸한다.
 const BASE_TABS: Tab[] = [
-  { href: "/search", label: "검색" },
+  { href: "/", label: "검색" },
   { href: "/vote", label: "투표" },
+  { href: "/request", label: "요청" },
   { href: "/about", label: "소개" },
 ];
 
@@ -18,36 +20,30 @@ export default function NavTabs({ isAdmin }: { isAdmin: boolean }) {
   const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS;
 
   return (
-    <nav className="mx-auto max-w-6xl px-4">
-      <ul className="flex gap-1 text-sm">
-        <li>
+    <nav className="flex items-center gap-1 ml-2">
+      {tabs.map((t) => {
+        const active = isActive(path, t.href);
+        return (
           <Link
-            href="/"
-            className={linkClass(path === "/")}
-            aria-current={path === "/" ? "page" : undefined}
+            key={t.href}
+            href={t.href}
+            aria-current={active ? "page" : undefined}
+            className={[
+              "px-4 py-2 text-2xl font-bold rounded-md transition-colors",
+              "text-brand hover:bg-brand-surface",
+              active ? "bg-brand-surface" : "",
+            ].join(" ")}
           >
-            홈
+            {t.label}
           </Link>
-        </li>
-        {tabs.map((t) => (
-          <li key={t.href}>
-            <Link
-              href={t.href}
-              className={linkClass(path?.startsWith(t.href) ?? false)}
-              aria-current={path?.startsWith(t.href) ? "page" : undefined}
-            >
-              {t.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+        );
+      })}
     </nav>
   );
 }
 
-function linkClass(active: boolean) {
-  return [
-    "inline-block px-3 py-2 border-b-2 transition-colors",
-    active ? "border-brand text-brand font-semibold" : "border-transparent text-neutral-600 hover:text-brand",
-  ].join(" ");
+function isActive(path: string | null, href: string): boolean {
+  if (!path) return false;
+  if (href === "/") return path === "/";
+  return path.startsWith(href);
 }

@@ -5,7 +5,7 @@ from typing import Any
 
 from supabase import Client, create_client
 
-from ..utils.config import get_config
+from utils.config import get_config
 
 
 def _client() -> Client:

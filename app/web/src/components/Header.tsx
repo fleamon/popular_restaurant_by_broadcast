@@ -28,16 +28,20 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-neutral-100">
-      <div className="mx-auto max-w-6xl flex items-center justify-between px-4 h-14">
-        {/* 좌: 로고 (마우스오버 시 파랑 로고로 전환) */}
-        <Link href="/" aria-label="홈으로" className="group relative h-9 w-36 block">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-neutral-100">
+      <div className="flex items-center h-[72px] pr-4">
+        {/* 페이지 좌측 끝에 붙은 로고 (호버 시 흰→파랑 전환) */}
+        <Link
+          href="/"
+          aria-label="홈으로"
+          className="group relative block h-[60px] w-60 shrink-0"
+        >
           <Image
             src="/white_eyes_white.png"
             alt="백안맛지도"
             fill
             priority
-            sizes="144px"
+            sizes="240px"
             className="object-contain transition-opacity duration-150 group-hover:opacity-0"
           />
           <Image
@@ -45,35 +49,42 @@ export default function Header() {
             alt=""
             fill
             aria-hidden
-            sizes="144px"
+            sizes="240px"
             className="object-contain opacity-0 transition-opacity duration-150 group-hover:opacity-100"
           />
         </Link>
 
-        {/* 우: 로그인 상태 */}
-        <div className="flex items-center gap-3 text-sm">
+        {/* 로고 우측에 이어지는 탭 */}
+        <NavTabs isAdmin={isAdmin} />
+
+        {/* 우측: 로그인 아이콘 / 로그인된 경우 로그아웃 */}
+        <div className="ml-auto flex items-center gap-3">
           {email ? (
-            <>
-              <span className="text-neutral-600">{email}</span>
-              <button
-                onClick={() => void signOut()}
-                className="rounded-md border px-3 py-1.5 hover:bg-neutral-50"
-              >
-                로그아웃
-              </button>
-            </>
+            <button
+              onClick={() => void signOut()}
+              className="text-base font-bold text-neutral-700 hover:text-brand"
+              title={email}
+            >
+              로그아웃
+            </button>
           ) : (
             <Link
               href="/auth/login"
-              className="rounded-md bg-brand px-3 py-1.5 text-brand-fg hover:bg-brand-hover"
+              aria-label="로그인 / 회원가입"
+              title="로그인 / 회원가입"
+              className="relative h-14 w-14 rounded-full hover:bg-brand-surface transition-colors"
             >
-              로그인 / 회원가입
+              <Image
+                src="/icon-login-user-outline.png"
+                alt=""
+                fill
+                sizes="56px"
+                className="object-contain p-2"
+              />
             </Link>
           )}
         </div>
       </div>
-
-      <NavTabs isAdmin={isAdmin} />
     </header>
   );
 }

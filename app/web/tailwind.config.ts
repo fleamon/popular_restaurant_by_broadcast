@@ -24,6 +24,15 @@ const config: Config = {
           "Apple SD Gothic Neo",
           "sans-serif",
         ],
+        // 살짝 부드러운 헤딩용 — Apple SD Gothic Neo(둥근 자형) 우선
+        soft: [
+          '"Apple SD Gothic Neo"',
+          '"SUIT Variable"',
+          '"Pretendard Variable"',
+          "Pretendard",
+          "system-ui",
+          "sans-serif",
+        ],
       },
     },
   },

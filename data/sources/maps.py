@@ -10,7 +10,7 @@ import urllib.parse
 
 import requests
 
-from ..utils.config import get_config
+from utils.config import get_config
 
 
 def naver_place_url(name: str) -> str:

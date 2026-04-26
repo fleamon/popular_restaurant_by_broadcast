@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from ..sources import namuwiki, wiki
+from sources import namuwiki, wiki
 
 
 def is_namuwiki(url: str) -> bool:

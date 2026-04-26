@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..sources.maps import kakao_geocode, kakao_place_url, naver_place_url
+from sources.maps import kakao_geocode, kakao_place_url, naver_place_url
 
 NAME_KEYS    = ("가게", "상호", "식당", "상점", "name", "업체")
 ADDRESS_KEYS = ("주소", "소재지", "위치", "address")
