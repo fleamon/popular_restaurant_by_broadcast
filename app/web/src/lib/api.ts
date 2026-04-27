@@ -20,6 +20,7 @@ export const api = {
     return request<Restaurant[]>(`/restaurants?${qs}`);
   },
   topRestaurants: (limit = 10) => request<Restaurant[]>(`/restaurants/top?limit=${limit}`),
+  topAppearance: (restaurantId: number) => request<Appearance | null>(`/restaurants/${restaurantId}/top-appearance`),
   listChannels: () => request<Channel[]>(`/channels`),
   channelRanking: () => request<RankingRow[]>(`/channels/ranking`),
   vote: (body: VoteBody, token: string) =>
@@ -53,6 +54,17 @@ export type Channel = {
   channel_type: "tv" | "youtube" | "blog" | "other";
   platform?: string | null;
   thumbnail_url?: string | null;
+};
+
+export type Appearance = {
+  id: number;
+  restaurant_id: number;
+  channel_id: number;
+  aired_at?: string | null;
+  episode_title?: string | null;
+  source_url?: string | null;
+  summary?: string | null;
+  channels?: Channel | null;
 };
 
 export type RankingRow = { id: number; name: string; likes: number; dislikes: number; net_score: number };
