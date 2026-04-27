@@ -79,7 +79,8 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!hasAnyFilter) {
-      setRows([]);
+      // 검색 조건이 없을 때: 전체 레스토랑을 로드해 지도에 핀으로 표시.
+      api.listRestaurants({ limit: 1000 }).then(setRows).catch(() => setRows([]));
       return;
     }
     const t = setTimeout(() => {
