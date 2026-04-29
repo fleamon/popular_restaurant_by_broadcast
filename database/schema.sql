@@ -94,20 +94,32 @@ comment on table public.appearances is '맛집이 어느 채널에 언제 소개
 create table if not exists public.profiles (
   id         uuid        primary key references auth.users(id) on delete cascade,
   nickname   text,
+  username   text        unique,
   avatar_url text,
   is_admin   boolean     not null default false,
   created_at timestamptz not null default now()
 );
+-- 기존 환경 호환: 컬럼이 없을 수 있음
+alter table public.profiles add column if not exists username text unique;
+comment on column public.profiles.username is '로그인용 아이디(handle). 이메일과 별도.';
 comment on column public.profiles.is_admin is 'true일 때 DB 관리 탭 및 /admin 접근 허용';
 
 -- auth.users insert 시 profiles 자동 생성
+-- raw_user_meta_data 에서 nickname / username 도 함께 복사
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles (id, nickname, avatar_url)
-  values (new.id,
-          coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-          new.raw_user_meta_data->>'avatar_url')
+  insert into public.profiles (id, nickname, username, avatar_url)
+  values (
+    new.id,
+    coalesce(
+      new.raw_user_meta_data->>'nickname',
+      new.raw_user_meta_data->>'name',
+      split_part(new.email, '@', 1)
+    ),
+    new.raw_user_meta_data->>'username',
+    new.raw_user_meta_data->>'avatar_url'
+  )
   on conflict (id) do nothing;
   return new;
 end;

@@ -41,6 +41,8 @@ def get_settings() -> dict[str, Any]:
         "supabase_anon_key":         pick("SUPABASE_ANON_KEY",         "supabase", "anon_key"),
         "supabase_service_role_key": pick("SUPABASE_SERVICE_ROLE_KEY", "supabase", "service_role_key"),
         "admin_email":               pick("ADMIN_EMAIL",               "admin", "email"),
+        "admin_signup_id":           pick("ADMIN_SIGNUP_ID",           "admin", "signup_id"),
+        "admin_signup_password":     pick("ADMIN_SIGNUP_PASSWORD",     "admin", "signup_password"),
         "naver_client_id":           pick("NAVER_CLIENT_ID",           "naver", "client_id"),
         "naver_client_secret":       pick("NAVER_CLIENT_SECRET",       "naver", "client_secret"),
         "kakao_rest_api_key":        pick("KAKAO_REST_API_KEY",        "kakao", "rest_api_key"),
