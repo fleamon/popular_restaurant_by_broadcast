@@ -18,7 +18,9 @@ type Props = {
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // 서울특별시청
 const DEFAULT_LEVEL = 8;
 
-export default function Map({ restaurants, center = DEFAULT_CENTER }: Props) {
+// 함수 이름을 'Map' 으로 두면 본문 내 `new Map()` 이 글로벌 Map 대신 자기 자신을 가리킨다.
+// 이 충돌을 피하기 위해 함수 이름은 RestaurantMap, default export 는 그대로 유지.
+export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: Props) {
   const appkey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY ?? "";
   const [loading, error] = useKakaoLoader({ appkey, libraries: ["services"] });
 
