@@ -182,33 +182,16 @@ export default function HomePage() {
         </button>
       </div>
 
-      {/* 결과 영역
-          지도 모드는 검색조건이 없어도 항상 렌더 (서울 기본 중심).
-          목록/격자 모드만 빈 상태일 때 안내 카드 표시. */}
+      {/* 결과 영역 — 검색 필터와 상관없이 세 가지 보기 모두 전체 데이터 표시 */}
       {view === "map" ? (
         <div className="h-[68vh] overflow-hidden rounded-xl border border-neutral-200">
           <Map restaurants={rows} />
         </div>
-      ) : !hasAnyFilter ? (
-        <EmptyState />
       ) : view === "list" ? (
         <RestaurantList rows={rows} />
       ) : (
         <RestaurantGrid rows={rows} />
       )}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="grid h-[60vh] place-items-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50 p-10 text-center">
-      <div>
-        <p className="text-lg font-bold text-brand">검색 조건을 선택해주세요.</p>
-        <p className="mt-1 text-sm text-neutral-500">
-          채널 타입 · 채널명 · 지역 · 카테고리 · 식당 이름 중 한 가지 이상이 필요합니다.
-        </p>
-      </div>
     </div>
   );
 }
