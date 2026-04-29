@@ -31,17 +31,16 @@ export type SignUpInput = {
   email: string;
   password: string;
   nickname: string;
-  username: string;
 };
 
-export async function signUpWithEmail({ email, password, nickname, username }: SignUpInput) {
+export async function signUpWithEmail({ email, password, nickname }: SignUpInput) {
   const sb = getSupabaseBrowser();
-  // 비밀번호는 Supabase Auth(bcrypt) 가 안전하게 해싱해 auth.users.encrypted_password 에 저장.
-  // raw_user_meta_data 의 nickname/username 은 트리거가 profiles 로 복사.
+  // 비밀번호는 Supabase Auth 가 안전하게 해싱해 저장 (관리자도 평문을 알 수 없음).
+  // raw_user_meta_data 의 nickname 은 handle_new_user 트리거가 public.users 로 복사.
   const { data, error } = await sb.auth.signUp({
     email,
     password,
-    options: { data: { nickname, username } },
+    options: { data: { nickname } },
   });
   if (error) throw error;
   return data;

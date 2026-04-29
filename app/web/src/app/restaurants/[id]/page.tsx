@@ -14,10 +14,15 @@ export default function RestaurantDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([
-      fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/restaurants/${id}`).then((r) => r.json()),
-      api.topAppearances(id),
-    ]).then(([r, a]) => { setRestaurant(r); setApps(a); });
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+    // 두 호출 모두 개별 catch 로 unhandled rejection 방지 (FastAPI 미가동 등)
+    fetch(`${base}/restaurants/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => setRestaurant(r))
+      .catch(() => setRestaurant(null));
+    api.topAppearances(id)
+      .then((a) => setApps(a))
+      .catch(() => setApps([]));
   }, [id]);
 
   if (!restaurant) return <div className="text-sm font-bold text-neutral-500">불러오는 중…</div>;

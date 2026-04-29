@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  grantAdmin,
   signInWithEmail,
   signInWithProvider,
   signUpWithEmail,
@@ -130,19 +129,15 @@ function LoginForm() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// 회원가입 폼 (5필드 + 어드민 옵션)
+// 회원가입 폼 (닉네임 / 이메일 / 비밀번호 / 비밀번호 확인)
+// — 이메일이 곧 로그인 ID. 별도 username 없음.
 // ─────────────────────────────────────────────────────────────────────
 function SignupForm() {
   const router = useRouter();
   const [nickname, setNickname] = useState("");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
-
-  const [adminMode, setAdminMode] = useState(false);
-  const [adminId, setAdminId] = useState("");
-  const [adminPw, setAdminPw] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -161,31 +156,11 @@ function SignupForm() {
       setErr("비밀번호는 6자 이상이어야 합니다.");
       return;
     }
-    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-      setErr("아이디는 영문/숫자/_ 3~20자여야 합니다.");
-      return;
-    }
 
     setBusy(true);
     try {
-      await signUpWithEmail({ email, password, nickname, username });
-
-      if (adminMode) {
-        try {
-          await grantAdmin(adminId, adminPw);
-        } catch (e) {
-          // 가입은 성공, admin 부여만 실패한 경우
-          setDone("회원가입은 완료됐지만 관리자 권한 부여에 실패했습니다. 다시 시도하려면 로그인 후 관리자 페이지에서 신청하세요.");
-          setBusy(false);
-          return;
-        }
-      }
-
-      setDone(
-        adminMode
-          ? "회원가입 + 관리자 권한 부여 완료! 메일 확인 후 로그인해주세요."
-          : "회원가입 완료! 메일을 확인해 인증 후 로그인해주세요.",
-      );
+      await signUpWithEmail({ email, password, nickname });
+      setDone("회원가입 완료! 메일을 확인해 인증 후 로그인해주세요.");
       setTimeout(() => router.push("/"), 1500);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "회원가입 실패");
@@ -199,16 +174,7 @@ function SignupForm() {
       <Field label="닉네임" required>
         <input value={nickname} onChange={(e) => setNickname(e.target.value)} required className={INPUT_CLS} />
       </Field>
-      <Field label="아이디" required hint="영문/숫자/_ 3~20자">
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          pattern="[a-zA-Z0-9_]{3,20}"
-          className={INPUT_CLS}
-        />
-      </Field>
-      <Field label="이메일" required>
+      <Field label="이메일" required hint="로그인 ID 로 사용됩니다">
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className={INPUT_CLS} />
       </Field>
       <Field label="비밀번호" required hint="6자 이상">
@@ -232,27 +198,6 @@ function SignupForm() {
         />
       </Field>
 
-      {/* 관리자 가입 (선택) */}
-      <div className="rounded-md border border-dashed border-neutral-300 p-3">
-        <label className="flex items-center gap-2 text-sm font-bold text-neutral-700">
-          <input type="checkbox" checked={adminMode} onChange={(e) => setAdminMode(e.target.checked)} />
-          관리자로 가입 (별도 ID/PW 필요)
-        </label>
-        {adminMode && (
-          <div className="mt-3 space-y-2">
-            <Field label="관리자 ID">
-              <input value={adminId} onChange={(e) => setAdminId(e.target.value)} className={INPUT_CLS} />
-            </Field>
-            <Field label="관리자 PW">
-              <input type="password" value={adminPw} onChange={(e) => setAdminPw(e.target.value)} className={INPUT_CLS} />
-            </Field>
-            <p className="text-xs text-neutral-500">
-              사전 공유된 관리자 자격 증명을 입력하면 가입 즉시 admin 권한이 부여됩니다.
-            </p>
-          </div>
-        )}
-      </div>
-
       {err && <p className="text-sm text-red-500">{err}</p>}
       {done && <p className="text-sm text-brand">{done}</p>}
 
@@ -265,7 +210,7 @@ function SignupForm() {
       </button>
 
       <p className="pt-1 text-xs text-neutral-400">
-        비밀번호는 Supabase Auth 가 bcrypt 해시로 안전하게 저장합니다. 평문 저장하지 않습니다.
+        비밀번호는 관리자도 알 수 없게 안전하게 저장합니다.
       </p>
     </form>
   );

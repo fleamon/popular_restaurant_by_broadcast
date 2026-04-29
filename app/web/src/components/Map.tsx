@@ -63,6 +63,7 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: 
     setBusy(true);
     api.topAppearances(r.id)
       .then((apps) => setTopApps(apps))
+      .catch(() => setTopApps([]))   // FastAPI 미가동/네트워크 오류 시 unhandled rejection 방지
       .finally(() => setBusy(false));
   }
 
@@ -152,9 +153,25 @@ function PinModal({
       <div className="p-4">
         <div className="text-base font-bold text-brand">{restaurant.current_name}</div>
         <div className="mt-1 text-xs text-neutral-500">{restaurant.current_address}</div>
-        {restaurant.cuisine && (
-          <div className="mt-1 text-xs text-neutral-400">{restaurant.cuisine}</div>
-        )}
+        <div className="mt-3 flex gap-2">
+          <a
+            href={restaurant.naver_map_url ?? `https://map.naver.com/v5/search/${encodeURIComponent(restaurant.current_name)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 rounded-md bg-[#03C75A] px-3 py-1.5 text-center text-xs font-bold text-white hover:opacity-90"
+          >
+            네이버지도
+          </a>
+          <a
+            href={restaurant.kakao_map_url ?? `https://map.kakao.com/?q=${encodeURIComponent(restaurant.current_name)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 rounded-md bg-[#FEE500] px-3 py-1.5 text-center text-xs font-bold text-black hover:opacity-90"
+          >
+            다음지도
+            {restaurant.kakao_rating ? <span className="ml-1">⭐ {restaurant.kakao_rating.toFixed(1)}</span> : null}
+          </a>
+        </div>
       </div>
 
       <div className="border-t border-neutral-100">
