@@ -1,4 +1,4 @@
-"""채널 조회 API."""
+"""채널 조회 + 영상별 점수/트렌딩."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
@@ -21,5 +21,20 @@ def list_channels(channel_type: str | None = Query(default=None)) -> list[dict]:
 def channel_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
     sb = get_anon_client()
     rows = sb.table("v_channel_score").select("*").order("net_score", desc=True).limit(limit).execute().data or []
-    # 뷰는 channel_id 로 노출하지만, 프론트 RankingRow 는 id 를 기대하므로 정규화.
     return [{**r, "id": r["channel_id"]} for r in rows]
+
+
+@router.get("/appearances/ranking")
+def appearance_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
+    """영상 좋아요 랭킹 — vote 탭 '영상 랭킹' 용."""
+    sb = get_anon_client()
+    rows = sb.table("v_appearance_score").select("*").order("net_score", desc=True).limit(limit).execute().data or []
+    return [{**r, "id": r["appearance_id"]} for r in rows]
+
+
+@router.get("/appearances/trending")
+def trending_appearances(limit: int = Query(default=20, le=100)) -> list[dict]:
+    """인기 급상승 영상 — 최근 7일 좋아요에 가중치 적용."""
+    sb = get_anon_client()
+    rows = sb.table("v_trending_appearances").select("*").order("trend_score", desc=True).limit(limit).execute().data or []
+    return [{**r, "id": r["appearance_id"]} for r in rows]

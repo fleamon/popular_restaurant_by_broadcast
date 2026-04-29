@@ -1,4 +1,4 @@
-"""좋아요/싫어요 투표."""
+"""좋아요/싫어요 투표 — 음식점/채널/영상 모두 동일 모델."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,10 +12,10 @@ router = APIRouter(prefix="/votes", tags=["votes"])
 
 @router.post("")
 def cast_vote(body: VoteRequest, user: dict = Depends(require_user)) -> dict:
-    """아이디별 대상당 1회. 같은 대상에 재호출 시 값 갱신(upsert)."""
+    """user당 (target_type,target_id) 1회. 재호출 시 값 갱신(upsert)."""
     sb = get_service_client()
     payload = {
-        "user_id": user["id"],
+        "user_id": user["sequence"],
         "target_type": body.target_type,
         "target_id": body.target_id,
         "value": body.value,
@@ -31,7 +31,7 @@ def cast_vote(body: VoteRequest, user: dict = Depends(require_user)) -> dict:
 def retract_vote(body: VoteRequest, user: dict = Depends(require_user)) -> dict:
     sb = get_service_client()
     sb.table("votes").delete().match({
-        "user_id": user["id"],
+        "user_id": user["sequence"],
         "target_type": body.target_type,
         "target_id": body.target_id,
     }).execute()

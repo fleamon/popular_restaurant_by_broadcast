@@ -1,22 +1,23 @@
--- 백안맛지도 더미 시드 (테스트용 120+ 레스토랑)
+-- 백안맛지도 v2 더미 시드 (테스트용 120+ 레스토랑)
 -- 실행 전 schema.sql 적용 완료 가정. 멱등성: ON CONFLICT 로 재실행 안전.
 
 -- ─────────────────────────────────────────────────────────────────────
--- 1. 채널 (8개 — TV / YouTube / Blog 다양)
+-- 1. 채널 (8개) — thumbnail_url 포함 (지도 핀 표시용)
 -- ─────────────────────────────────────────────────────────────────────
-insert into public.channels (name, channel_type, platform, wiki_url) values
-  ('백종원의 3대천왕',           'tv',      'SBS',          'https://ko.wikipedia.org/wiki/%EB%B0%B1%EC%A2%85%EC%9B%90%EC%9D%98_3%EB%8C%80%EC%B2%9C%EC%99%95'),
-  ('수요미식회',                  'tv',      'tvN',          'https://namu.wiki/w/%EC%88%98%EC%9A%94%EB%AF%B8%EC%8B%9D%ED%9A%8C'),
-  ('생활의 달인',                 'tv',      'SBS',          null),
-  ('식객 허영만의 백반기행',     'tv',      'TV조선',       null),
-  ('맛상무',                       'youtube', 'YouTube',     'https://namu.wiki/w/%EB%A7%9B%EC%83%81%EB%AC%B4'),
-  ('영자씨의 부엌',               'youtube', 'YouTube',     null),
-  ('이연복의 사부의 비법',        'youtube', 'YouTube',     null),
-  ('김씨네 맛집블로그',           'blog',    '네이버블로그', null)
+insert into public.channels (name, channel_type, platform, wiki_url, thumbnail_url) values
+  ('백종원의 3대천왕',           'tv',      'SBS',          'https://ko.wikipedia.org/wiki/%EB%B0%B1%EC%A2%85%EC%9B%90%EC%9D%98_3%EB%8C%80%EC%B2%9C%EC%99%95',
+                                                            'https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/SBS_logo.svg/200px-SBS_logo.svg.png'),
+  ('수요미식회',                  'tv',      'tvN',          'https://namu.wiki/w/%EC%88%98%EC%9A%94%EB%AF%B8%EC%8B%9D%ED%9A%8C', null),
+  ('생활의 달인',                 'tv',      'SBS',          null, null),
+  ('식객 허영만의 백반기행',     'tv',      'TV조선',       null, null),
+  ('맛상무',                       'youtube', 'YouTube',     'https://namu.wiki/w/%EB%A7%9B%EC%83%81%EB%AC%B4', null),
+  ('영자씨의 부엌',               'youtube', 'YouTube',     null, null),
+  ('이연복의 사부의 비법',        'youtube', 'YouTube',     null, null),
+  ('김씨네 맛집블로그',           'blog',    '네이버블로그', null, null)
 on conflict (name) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────────
--- 2. 레스토랑 120개 — generate_series + 배열 인덱싱으로 다양성 확보
+-- 2. 레스토랑 120개 — generate_series 로 다양한 시도/카테고리/좌표 분산
 -- ─────────────────────────────────────────────────────────────────────
 with base as (
   select
@@ -41,11 +42,7 @@ insert into public.restaurants
 select
   base_name || ' ' || sido || ' ' || n::text || '호점'                              as current_name,
   sido || ' ' || sigungu || ' ' || dong || ' ' || (1 + (n % 200))::text || '-' || (1 + (n % 50))::text   as current_address,
-  cuisine,
-  sido,
-  sigungu,
-  dong,
-  -- 광역단체별 대략 좌표 + 랜덤 오프셋
+  cuisine, sido, sigungu, dong,
   case sido
     when '서울특별시'        then 37.5665 + (random() - 0.5) * 0.10
     when '경기도'            then 37.4138 + (random() - 0.5) * 0.40
@@ -71,12 +68,12 @@ select
     when '제주특별자치도'    then 126.5312 + (random() - 0.5) * 0.30
   end                                                                              as lng,
   null, null,
-  '🍽 더미 데이터 — 테스트용'                                                       as notes
+  '🍽 더미 데이터 — 테스트용'
 from base
 on conflict (current_name, current_address) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────────
--- 3. Appearances — 각 레스토랑마다 1~3개 무작위 채널 등장
+-- 3. Appearances — 각 레스토랑마다 1~3개 무작위 채널 등장. 일부에 youtube_video_id.
 -- ─────────────────────────────────────────────────────────────────────
 with restaurants_to_seed as (
   select id, current_name from public.restaurants where notes like '🍽 더미%'
@@ -89,25 +86,26 @@ appearance_plan as (
   from restaurants_to_seed r,
        lateral generate_series(1, 1 + (random() * 2)::int) as n
 )
-insert into public.appearances (restaurant_id, channel_id, aired_at, episode_title, source_url, summary)
+insert into public.appearances (restaurant_id, channel_id, aired_at, episode_title, source_url, youtube_video_id, thumbnail_url, summary)
 select
   ap.restaurant_id,
-  -- 각 row 마다 무작위 채널 1개 (Postgres 의 lateral subquery 로)
-  (select id from public.channels order by random() limit 1)                       as channel_id,
-  current_date - (random() * 365 * 5)::int                                         as aired_at,
-  ap.restaurant_name || ' 방영 ' || ap.seq || '회'                                 as episode_title,
-  -- 60% 확률로 YouTube/원본 링크 첨부
-  case when random() < 0.6
-       then 'https://www.youtube.com/watch?v=demo_' || ap.restaurant_id || '_' || ap.seq
+  (select id from public.channels order by random() limit 1),
+  current_date - (random() * 365 * 5)::int,
+  ap.restaurant_name || ' 방영 ' || ap.seq || '회',
+  case when random() < 0.7
+       then 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
        else null
-  end                                                                              as source_url,
-  '🎬 ' || ap.restaurant_name || ' — 시청자 추천 맛집'                             as summary
+  end,
+  case when random() < 0.5 then 'dQw4w9WgXcQ' else null end,
+  case when random() < 0.5
+       then 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg'
+       else null
+  end,
+  '🎬 ' || ap.restaurant_name || ' — 시청자 추천 맛집'
 from appearance_plan ap;
 
 -- ─────────────────────────────────────────────────────────────────────
--- 4. 결과 요약 (실행 후 SELECT 로 확인)
+-- 4. (선택) 현재 로그인한 본인을 superadmin 으로 지정
+--    회원가입 후, 본인 이메일을 수동 업데이트:
+-- update public.users set role = 'superadmin' where email = 'your@email.com';
 -- ─────────────────────────────────────────────────────────────────────
--- select count(*) restaurants from public.restaurants;
--- select count(*) appearances  from public.appearances;
--- select sido, count(*) from public.restaurants group by sido order by sido;
--- select cuisine, count(*) from public.restaurants group by cuisine order by cuisine;

@@ -2,30 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
-import { getSupabaseBrowser } from "@/lib/supabase";
 import { signOut } from "@/lib/auth";
+import { useMe } from "@/lib/me";
+import { isAdmin } from "@/lib/role";
 import NavTabs from "./NavTabs";
 
 export default function Header() {
-  const [email, setEmail] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    const sb = getSupabaseBrowser();
-    sb.auth.getUser().then(async ({ data }) => {
-      const user = data.user;
-      setEmail(user?.email ?? null);
-      if (!user) return;
-      const { data: profile } = await sb
-        .from("profiles")
-        .select("is_admin")
-        .eq("id", user.id)
-        .single();
-      setIsAdmin(!!profile?.is_admin);
-    });
-  }, []);
+  const { me } = useMe();
 
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-neutral-100">
@@ -54,19 +38,28 @@ export default function Header() {
           />
         </Link>
 
-        {/* 로고 우측에 이어지는 탭 */}
-        <NavTabs isAdmin={isAdmin} />
+        {/* 로고 우측 탭 — admin/superadmin 이면 'DB 관리' 노출 */}
+        <NavTabs isAdmin={isAdmin(me)} />
 
-        {/* 우측: 로그인 아이콘 / 로그인된 경우 로그아웃 */}
+        {/* 우측: 로그인 아이콘 또는 로그아웃 */}
         <div className="ml-auto flex items-center gap-3">
-          {email ? (
-            <button
-              onClick={() => void signOut()}
-              className="text-base font-bold text-neutral-700 hover:text-brand"
-              title={email}
-            >
-              로그아웃
-            </button>
+          {me ? (
+            <>
+              <span className="hidden sm:inline text-sm font-bold text-neutral-700">
+                {me.nickname ?? me.email}
+                {me.role !== "user" && (
+                  <span className="ml-2 rounded bg-brand-surface px-1.5 py-0.5 text-xs text-brand">
+                    {me.role}
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={() => void signOut()}
+                className="text-sm font-bold text-neutral-700 hover:text-brand"
+              >
+                로그아웃
+              </button>
+            </>
           ) : (
             <Link
               href="/auth/login"

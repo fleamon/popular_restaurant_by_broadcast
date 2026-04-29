@@ -9,6 +9,7 @@ import {
   signInWithProvider,
   signUpWithEmail,
 } from "@/lib/auth";
+import { GoogleLogo, KakaoLogo, NaverLogo } from "@/components/SocialLogos";
 
 type Mode = "login" | "signup";
 
@@ -112,13 +113,16 @@ function LoginForm() {
 
       <div className="flex flex-col gap-2">
         <SocialBtn onClick={() => void signInWithProvider("kakao")} className="bg-[#FEE500] text-black">
-          🟡 카카오로 로그인
+          <KakaoLogo />
+          <span>카카오로 로그인</span>
         </SocialBtn>
         <SocialBtn onClick={() => void signInWithProvider("naver")} className="bg-[#03C75A] text-white">
-          🟢 네이버로 로그인
+          <NaverLogo />
+          <span>네이버로 로그인</span>
         </SocialBtn>
         <SocialBtn onClick={() => void signInWithProvider("google")} className="border border-neutral-300 bg-white text-neutral-800">
-          🔵 구글로 로그인
+          <GoogleLogo />
+          <span>구글로 로그인</span>
         </SocialBtn>
       </div>
     </div>
@@ -307,7 +311,7 @@ function SocialBtn({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md px-4 py-3 font-bold hover:opacity-90 ${className ?? ""}`}
+      className={`flex items-center justify-center gap-2 rounded-md px-4 py-3 font-bold hover:opacity-90 ${className ?? ""}`}
     >
       {children}
     </button>
