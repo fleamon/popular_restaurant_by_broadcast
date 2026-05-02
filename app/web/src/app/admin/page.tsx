@@ -25,11 +25,14 @@ export default function AdminPage() {
 // ─────────────────────────────────────────────────────────────────────
 // (1) superadmin 전용 — 회원 관리
 // ─────────────────────────────────────────────────────────────────────
+type SaveResult = { email: string; before: string[]; after: string[] };
+
 function UserManagement() {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<MeResponse[]>([]);
   const [total, setTotal] = useState(0);
+  const [savedModal, setSavedModal] = useState<SaveResult | null>(null);
   const PAGE_SIZE = 20;
 
   function reload() {
@@ -52,6 +55,14 @@ function UserManagement() {
     reload();
   }
 
+  /** charge_channel 저장 시 before/after 모달 표시 */
+  async function patchCharge(user: MeResponse, after: string[]) {
+    const before = user.charge_channel ?? [];
+    await api.updateUser(user.sequence, { charge_channel: after });
+    setSavedModal({ email: user.email, before, after });
+    reload();
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -67,15 +78,17 @@ function UserManagement() {
         <table className="min-w-full divide-y divide-neutral-200 text-sm">
           <thead className="bg-neutral-50">
             <tr>
-              {["#", "email", "nickname", "role", "charge_channel", "blocked", "actions"].map((h) => (
+              {["#", "email", "nickname", "role", "charge_channel", "actions"].map((h) => (
                 <th key={h} className="px-3 py-2 text-left font-bold text-neutral-700">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {rows.map((u) => <UserRow key={u.sequence} user={u} onPatch={patch} />)}
+            {rows.map((u) => (
+              <UserRow key={u.sequence} user={u} onPatch={patch} onPatchCharge={patchCharge} />
+            ))}
             {rows.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-neutral-400">결과 없음</td></tr>
+              <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-400">결과 없음</td></tr>
             )}
           </tbody>
         </table>
@@ -97,16 +110,33 @@ function UserManagement() {
           다음 ▶
         </button>
       </div>
+
+      {savedModal && (
+        <SavedModal result={savedModal} onClose={() => setSavedModal(null)} />
+      )}
     </section>
   );
 }
 
-function UserRow({ user, onPatch }: { user: MeResponse; onPatch: (s: number, b: UserUpdateBody) => Promise<void> }) {
+function UserRow({
+  user,
+  onPatch,
+  onPatchCharge,
+}: {
+  user: MeResponse;
+  onPatch: (s: number, b: UserUpdateBody) => Promise<void>;
+  onPatchCharge: (u: MeResponse, after: string[]) => Promise<void>;
+}) {
   const [chargeText, setChargeText] = useState((user.charge_channel ?? []).join(", "));
+
+  // 외부에서 user.charge_channel 이 새로 로드되면 입력란 동기화
+  useEffect(() => {
+    setChargeText((user.charge_channel ?? []).join(", "));
+  }, [user.charge_channel]);
 
   function saveCharge() {
     const arr = chargeText.split(",").map((s) => s.trim()).filter(Boolean);
-    void onPatch(user.sequence, { charge_channel: arr });
+    void onPatchCharge(user, arr);
   }
 
   return (
@@ -139,13 +169,6 @@ function UserRow({ user, onPatch }: { user: MeResponse; onPatch: (s: number, b: 
         </div>
       </td>
       <td className="px-3 py-2">
-        <input
-          type="checkbox"
-          checked={user.is_blocked}
-          onChange={(e) => void onPatch(user.sequence, { is_blocked: e.target.checked })}
-        />
-      </td>
-      <td className="px-3 py-2">
         <button
           onClick={() => void onPatch(user.sequence, { is_blocked: !user.is_blocked })}
           className={[
@@ -157,6 +180,51 @@ function UserRow({ user, onPatch }: { user: MeResponse; onPatch: (s: number, b: 
         </button>
       </td>
     </tr>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// charge_channel 저장 결과 모달
+// ─────────────────────────────────────────────────────────────────────
+function SavedModal({ result, onClose }: { result: SaveResult; onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+      >
+        <div className="mb-3 flex items-center gap-2">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-green-100 text-green-700">✓</span>
+          <h3 className="font-soft text-lg font-bold text-brand">저장 완료</h3>
+        </div>
+        <p className="mb-4 text-sm font-bold text-neutral-600">{result.email} 의 charge_channel</p>
+
+        <div className="space-y-3 text-sm">
+          <div>
+            <div className="mb-1 text-xs font-bold text-neutral-500">이전 값</div>
+            <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2 font-mono text-xs">
+              {result.before.length === 0 ? <span className="text-neutral-400">(빈 배열)</span> : result.before.join(", ")}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 text-xs font-bold text-brand">현재 값</div>
+            <div className="rounded-md border border-brand bg-brand-surface p-2 font-mono text-xs">
+              {result.after.length === 0 ? <span className="text-neutral-400">(빈 배열)</span> : result.after.join(", ")}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-5 w-full rounded-md bg-brand px-4 py-2 font-bold text-brand-fg hover:bg-brand-hover"
+        >
+          확인
+        </button>
+      </div>
+    </div>
   );
 }
 
