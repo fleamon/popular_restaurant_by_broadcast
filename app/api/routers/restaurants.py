@@ -134,14 +134,17 @@ def create_restaurant(body: RestaurantPayload, user: dict = Depends(require_admi
     res = sb.table("restaurants").upsert(payload, on_conflict="current_name,current_address").execute()
     rid = res.data[0]["id"]
 
-    # appearances 자동 생성
+    # appearances 자동 생성. 채널이 DB 에 없으면 channel_type='other' 로 자동 생성.
     for ch_name in body.channels:
-        ch = sb.table("channels").select("id").eq("name", ch_name).single().execute().data
-        if not ch:
-            continue
+        existing = sb.table("channels").select("id").eq("name", ch_name).execute().data or []
+        if existing:
+            ch_id = existing[0]["id"]
+        else:
+            created = sb.table("channels").insert({"name": ch_name, "channel_type": "other"}).execute()
+            ch_id = created.data[0]["id"]
         sb.table("appearances").insert({
             "restaurant_id": rid,
-            "channel_id": ch["id"],
+            "channel_id": ch_id,
             "episode_title": body.episode_title,
             "source_url": body.source_url,
             "youtube_video_id": body.youtube_video_id,

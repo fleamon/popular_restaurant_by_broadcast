@@ -14,7 +14,7 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">DB 관리</h1>
+      <h1 className="font-soft text-3xl font-bold tracking-tight" style={{ color: "rgb(20 30 80)" }}>DB 관리</h1>
 
       {isSuperadmin(me) && <UserManagement />}
       <RestaurantInput me={me!} />
@@ -67,7 +67,7 @@ function UserManagement() {
 
   return (
     <section className="space-y-3">
-      <h2 className="font-soft text-2xl font-bold text-brand">회원 관리</h2>
+      <h2 className="font-soft text-2xl font-bold" style={{ color: "rgb(20 30 80)" }}>회원 관리</h2>
       <input
         placeholder="email 또는 닉네임 검색"
         value={q}
@@ -76,10 +76,13 @@ function UserManagement() {
       />
       <div className="overflow-auto rounded-lg border border-neutral-200">
         <table className="min-w-full divide-y divide-neutral-200 text-sm">
-          <thead className="bg-neutral-50">
+          <thead style={{ background: "rgb(245 247 252)" }}>
             <tr>
               {["#", "email", "nickname", "role", "charge_channel", "actions"].map((h) => (
-                <th key={h} className="px-3 py-2 text-left font-bold text-neutral-700">{h}</th>
+                <th key={h} className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wider"
+                    style={{ color: "rgb(80 95 130)" }}>
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>
@@ -88,7 +91,9 @@ function UserManagement() {
               <UserRow key={u.sequence} user={u} onPatch={patch} onPatchCharge={patchCharge} />
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-400">결과 없음</td></tr>
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center" style={{ color: "rgb(150 160 180)" }}>결과 없음</td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -97,15 +102,19 @@ function UserManagement() {
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page <= 1}
-          className="rounded border px-3 py-1 disabled:opacity-50"
+          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
+          style={{ color: "rgb(20 30 80)" }}
         >
           ◀ 이전
         </button>
-        <span className="font-bold">{page} / {totalPages} (총 {total})</span>
+        <span className="font-bold" style={{ color: "rgb(20 30 80)" }}>
+          {page} / {totalPages} <span style={{ color: "rgb(110 120 140)" }}>(총 {total})</span>
+        </span>
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           disabled={page >= totalPages}
-          className="rounded border px-3 py-1 disabled:opacity-50"
+          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
+          style={{ color: "rgb(20 30 80)" }}
         >
           다음 ▶
         </button>
@@ -139,16 +148,27 @@ function UserRow({
     void onPatchCharge(user, arr);
   }
 
+  const roleColor =
+    user.role === "superadmin" ? "rgb(140 50 180)" :
+    user.role === "admin"      ? "rgb(43 127 255)" :
+                                  "rgb(80 95 130)";
+
   return (
     <tr className="hover:bg-brand-surface">
-      <td className="px-3 py-2">{user.sequence}</td>
-      <td className="px-3 py-2">{user.email}</td>
-      <td className="px-3 py-2">{user.nickname}</td>
+      <td className="px-3 py-2 font-mono text-xs" style={{ color: "rgb(110 120 140)" }}>{user.sequence}</td>
+      <td className="px-3 py-2 font-mono text-xs" style={{ color: "rgb(20 30 80)" }}>
+        {user.email}
+        {user.is_blocked && (
+          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-700">BLOCKED</span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-sm" style={{ color: "rgb(20 30 80)" }}>{user.nickname}</td>
       <td className="px-3 py-2">
         <select
           value={user.role}
           onChange={(e) => void onPatch(user.sequence, { role: e.target.value as never })}
           className="rounded border px-2 py-1 text-sm font-bold"
+          style={{ color: roleColor }}
         >
           <option value="user">user</option>
           <option value="admin">admin</option>
@@ -161,7 +181,8 @@ function UserRow({
             value={chargeText}
             onChange={(e) => setChargeText(e.target.value)}
             placeholder="채널1, 채널2"
-            className="min-w-[200px] rounded border px-2 py-1 text-sm"
+            className="min-w-[200px] rounded border px-2 py-1 text-sm font-bold"
+            style={{ color: "rgb(20 30 80)" }}
           />
           <button onClick={saveCharge} className="rounded bg-brand px-2 py-1 text-xs font-bold text-brand-fg">
             저장
@@ -229,18 +250,21 @@ function SavedModal({ result, onClose }: { result: SaveResult; onClose: () => vo
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// (2) 맛집 입력 — admin/superadmin (charge_channel 필터)
+// (2) 맛집 입력 — admin/superadmin
+//   - admin: 자기 charge_channel 만 (배열 그대로 옵션으로 사용)
+//   - superadmin: 기존 모든 채널 + "+ 새 채널 직접 입력" 모드
 // ─────────────────────────────────────────────────────────────────────
 function RestaurantInput({ me }: { me: MeResponse }) {
   const [allChannels, setAllChannels] = useState<Channel[]>([]);
   const [channelName, setChannelName] = useState("");
+  const [customMode, setCustomMode] = useState(false);  // superadmin 새 채널 모드
+  const [customChannel, setCustomChannel] = useState("");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [cuisine, setCuisine] = useState("");
   const [naverUrl, setNaverUrl] = useState("");
   const [kakaoUrl, setKakaoUrl] = useState("");
-  const [youtubeId, setYoutubeId] = useState("");
-  const [episode, setEpisode] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -248,17 +272,26 @@ function RestaurantInput({ me }: { me: MeResponse }) {
     api.listChannels().then(setAllChannels).catch(() => setAllChannels([]));
   }, []);
 
-  // admin 은 자신이 관리하는 채널만, superadmin 은 전부
-  const usableChannels = useMemo(() => {
-    if (me.role === "superadmin") return allChannels;
-    const allowed = new Set(me.charge_channel ?? []);
-    return allChannels.filter((c) => allowed.has(c.name));
+  // 채널 옵션:
+  //   - admin: charge_channel 배열 그대로 (DB 미존재여도 OK — 백엔드가 자동 생성)
+  //   - superadmin: 등록된 모든 채널 이름
+  const channelOptions = useMemo<string[]>(() => {
+    if (me.role === "superadmin") return allChannels.map((c) => c.name);
+    return me.charge_channel ?? [];
   }, [allChannels, me]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
+
+    const ch = customMode ? customChannel.trim() : channelName;
+    if (!ch) {
+      setMsg("❌ 채널을 선택하거나 입력하세요");
+      setBusy(false);
+      return;
+    }
+
     try {
       await api.createRestaurant({
         current_name: name,
@@ -266,14 +299,18 @@ function RestaurantInput({ me }: { me: MeResponse }) {
         cuisine: cuisine || null,
         naver_map_url: naverUrl || null,
         kakao_map_url: kakaoUrl || null,
-        channels: channelName ? [channelName] : [],
-        youtube_video_id: youtubeId || null,
-        source_url: youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : null,
-        episode_title: episode || null,
+        channels: [ch],
+        source_url: videoUrl || null,
+        youtube_video_id: extractYouTubeId(videoUrl),
       });
       setMsg("✅ 추가되었습니다");
       setName(""); setAddress(""); setCuisine(""); setNaverUrl(""); setKakaoUrl("");
-      setYoutubeId(""); setEpisode("");
+      setVideoUrl("");
+      if (customMode) {
+        setCustomChannel("");
+        // 새 채널이 DB 에 추가됐을 테니 목록 새로고침
+        api.listChannels().then(setAllChannels).catch(() => {});
+      }
     } catch (e) {
       setMsg("❌ 실패: " + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -283,26 +320,52 @@ function RestaurantInput({ me }: { me: MeResponse }) {
 
   return (
     <section className="space-y-3">
-      <h2 className="font-soft text-2xl font-bold text-brand">맛집 입력</h2>
-      <p className="text-sm font-bold text-neutral-500">
+      <h2 className="font-soft text-2xl font-bold" style={{ color: "rgb(20 30 80)" }}>맛집 입력</h2>
+      <p className="text-sm font-bold" style={{ color: "rgb(110 120 140)" }}>
         {me.role === "admin"
-          ? `당신이 관리하는 채널 (${(me.charge_channel ?? []).join(", ") || "없음"}) 의 맛집만 등록 가능합니다.`
-          : "superadmin 은 모든 채널에 등록 가능합니다."}
+          ? `관리 채널: ${(me.charge_channel ?? []).join(", ") || "(없음 — superadmin 에게 charge_channel 설정을 요청하세요)"}`
+          : "superadmin 은 모든 채널에 등록할 수 있고, 필요하면 새 채널을 즉시 추가할 수 있습니다."}
       </p>
+
       <form onSubmit={onSubmit} className="space-y-3 rounded-xl border border-neutral-200 bg-white p-5">
         <Field label="채널" required>
-          <select
-            value={channelName}
-            onChange={(e) => setChannelName(e.target.value)}
-            required
-            className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold text-black focus:border-brand focus:outline-none"
-          >
-            <option value="">— 선택 —</option>
-            {usableChannels.map((c) => (
-              <option key={c.id} value={c.name}>[{c.channel_type}] {c.name}</option>
-            ))}
-          </select>
+          <div className="space-y-2">
+            {!customMode ? (
+              <select
+                value={channelName}
+                onChange={(e) => setChannelName(e.target.value)}
+                required
+                className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold focus:border-brand focus:outline-none"
+                style={{ color: "rgb(20 30 80)" }}
+              >
+                <option value="">— 선택 —</option>
+                {channelOptions.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                value={customChannel}
+                onChange={setCustomChannel}
+                placeholder="새 채널 이름 (예: 맛있는 녀석들)"
+                required
+              />
+            )}
+
+            {/* superadmin 만 새 채널 직접 입력 토글 */}
+            {me.role === "superadmin" && (
+              <button
+                type="button"
+                onClick={() => { setCustomMode((v) => !v); setChannelName(""); setCustomChannel(""); }}
+                className="text-xs font-bold underline"
+                style={{ color: "rgb(43 127 255)" }}
+              >
+                {customMode ? "← 기존 채널 목록으로" : "+ 새 채널 직접 입력"}
+              </button>
+            )}
+          </div>
         </Field>
+
         <Field label="가게 이름" required>
           <Input value={name} onChange={setName} required />
         </Field>
@@ -318,13 +381,18 @@ function RestaurantInput({ me }: { me: MeResponse }) {
         <Field label="카카오 지도 URL" hint="https://map.kakao.com/...">
           <Input value={kakaoUrl} onChange={setKakaoUrl} placeholder="https://map.kakao.com/..." />
         </Field>
-        <Field label="YouTube 영상 ID" hint="예: dQw4w9WgXcQ (URL의 v= 뒤 11자)">
-          <Input value={youtubeId} onChange={setYoutubeId} />
+        <Field label="영상 URL" hint="YouTube / 네이버TV / 블로그 등 어떤 플랫폼 URL 도 OK">
+          <Input value={videoUrl} onChange={setVideoUrl} placeholder="https://www.youtube.com/watch?v=..." />
         </Field>
-        <Field label="에피소드/방송 회차">
-          <Input value={episode} onChange={setEpisode} />
-        </Field>
-        {msg && <p className="text-sm font-bold">{msg}</p>}
+
+        {msg && (
+          <p
+            className="text-sm font-bold"
+            style={{ color: msg.startsWith("✅") ? "rgb(20 130 60)" : "rgb(200 40 40)" }}
+          >
+            {msg}
+          </p>
+        )}
         <button
           type="submit"
           disabled={busy}
@@ -337,12 +405,20 @@ function RestaurantInput({ me }: { me: MeResponse }) {
   );
 }
 
+function extractYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const m = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
 function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 flex items-center justify-between text-sm font-bold text-neutral-700">
-        <span>{label} {required && <span className="text-red-500">*</span>}</span>
-        {hint && <span className="font-normal text-neutral-400">{hint}</span>}
+      <span className="mb-1 flex items-center justify-between text-sm font-bold">
+        <span style={{ color: "rgb(20 30 80)" }}>
+          {label} {required && <span style={{ color: "rgb(200 40 40)" }}>*</span>}
+        </span>
+        {hint && <span className="font-normal" style={{ color: "rgb(150 160 180)" }}>{hint}</span>}
       </span>
       {children}
     </label>

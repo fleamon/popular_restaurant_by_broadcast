@@ -41,6 +41,22 @@ def update_user(seq: int, body: UserUpdate) -> dict:
         raise HTTPException(status_code=400, detail="empty update")
     if "role" in payload and payload["role"] not in ("superadmin", "admin", "user"):
         raise HTTPException(status_code=400, detail="invalid role")
+
     sb = get_service_client()
+
+    # charge_channel 갱신 시 — 누락된 채널을 channels 테이블에 자동 생성.
+    # 이래야 admin 의 맛집 입력 select 가 실제 DB row 와 매칭되고, 검색 필터에도 노출됨.
+    if "charge_channel" in payload and payload["charge_channel"]:
+        names: list[str] = [n.strip() for n in payload["charge_channel"] if n and n.strip()]
+        payload["charge_channel"] = names  # strip 다시 강제
+        if names:
+            existing = sb.table("channels").select("name").in_("name", names).execute().data or []
+            have = {r["name"] for r in existing}
+            missing = [n for n in names if n not in have]
+            if missing:
+                sb.table("channels").insert(
+                    [{"name": n, "channel_type": "other"} for n in missing]
+                ).execute()
+
     res = sb.table("users").update(payload).eq("sequence", seq).execute()
     return {"data": res.data}
