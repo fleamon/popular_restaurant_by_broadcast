@@ -44,19 +44,43 @@ def update_user(seq: int, body: UserUpdate) -> dict:
 
     sb = get_service_client()
 
-    # charge_channel 갱신 시 — 누락된 채널을 channels 테이블에 자동 생성.
-    # 이래야 admin 의 맛집 입력 select 가 실제 DB row 와 매칭되고, 검색 필터에도 노출됨.
-    if "charge_channel" in payload and payload["charge_channel"]:
-        names: list[str] = [n.strip() for n in payload["charge_channel"] if n and n.strip()]
-        payload["charge_channel"] = names  # strip 다시 강제
-        if names:
-            existing = sb.table("channels").select("name").in_("name", names).execute().data or []
-            have = {r["name"] for r in existing}
-            missing = [n for n in names if n not in have]
-            if missing:
-                sb.table("channels").insert(
-                    [{"name": n, "channel_type": "other"} for n in missing]
-                ).execute()
+    # charge_channel 정규화 (strip + 빈 문자열 제거 + dedupe)
+    if "charge_channel" in payload:
+        raw = payload["charge_channel"] or []
+        names = list(dict.fromkeys(n.strip() for n in raw if n and n.strip()))
+        payload["charge_channel"] = names
 
     res = sb.table("users").update(payload).eq("sequence", seq).execute()
+
+    # charge_channel 갱신 후 — channels 테이블을 모든 회원의 distinct(union) 와 동기화.
+    #   ① 새로 등장한 이름은 channels 에 INSERT (channel_type='other' 기본값)
+    #   ② 어떤 회원의 charge_channel 에도 없는 채널은 channels 에서 DELETE
+    #      단, appearances 가 연결된 채널은 데이터 보호를 위해 유지 (orphan 방지)
+    if "charge_channel" in payload:
+        all_users = sb.table("users").select("charge_channel").execute().data or []
+        distinct: set[str] = set()
+        for u in all_users:
+            for n in (u.get("charge_channel") or []):
+                if n:
+                    distinct.add(n)
+
+        current = sb.table("channels").select("id, name").execute().data or []
+        current_names = {c["name"] for c in current}
+
+        # ① INSERT missing
+        to_add = distinct - current_names
+        if to_add:
+            sb.table("channels").insert(
+                [{"name": n, "channel_type": "other"} for n in to_add]
+            ).execute()
+
+        # ② DELETE 채널 — distinct 에 없고 + appearances 0 개인 것만
+        for c in current:
+            if c["name"] in distinct:
+                continue
+            apps = sb.table("appearances").select("id").eq("channel_id", c["id"]).limit(1).execute().data or []
+            if apps:
+                continue   # 실제 사용중인 채널은 보존
+            sb.table("channels").delete().eq("id", c["id"]).execute()
+
     return {"data": res.data}

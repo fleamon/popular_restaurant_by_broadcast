@@ -8,6 +8,9 @@ import { isAdmin, isSuperadmin } from "@/lib/role";
 
 export default function AdminPage() {
   const { me, loading } = useMe();
+  // charge_channel 변경 시 RestaurantInput 의 채널 목록을 즉시 재로드하기 위한 키
+  const [channelsRevision, setChannelsRevision] = useState(0);
+  const bumpChannels = () => setChannelsRevision((v) => v + 1);
 
   if (loading) return <div className="text-sm font-bold text-neutral-500">권한 확인 중…</div>;
   if (!isAdmin(me)) return <div className="text-sm font-bold text-red-500">관리자만 접근할 수 있습니다.</div>;
@@ -16,8 +19,8 @@ export default function AdminPage() {
     <div className="space-y-8">
       <h1 className="font-soft text-3xl font-bold tracking-tight" style={{ color: "rgb(20 30 80)" }}>DB 관리</h1>
 
-      {isSuperadmin(me) && <UserManagement />}
-      <RestaurantInput me={me!} />
+      {isSuperadmin(me) && <UserManagement onChannelsChanged={bumpChannels} />}
+      <RestaurantInput me={me!} channelsRevision={channelsRevision} />
     </div>
   );
 }
@@ -27,7 +30,7 @@ export default function AdminPage() {
 // ─────────────────────────────────────────────────────────────────────
 type SaveResult = { email: string; before: string[]; after: string[] };
 
-function UserManagement() {
+function UserManagement({ onChannelsChanged }: { onChannelsChanged: () => void }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<MeResponse[]>([]);
@@ -55,12 +58,13 @@ function UserManagement() {
     reload();
   }
 
-  /** charge_channel 저장 시 before/after 모달 표시 */
+  /** charge_channel 저장 시 before/after 모달 + 부모(맛집입력)에게 채널 갱신 신호 */
   async function patchCharge(user: MeResponse, after: string[]) {
     const before = user.charge_channel ?? [];
     await api.updateUser(user.sequence, { charge_channel: after });
     setSavedModal({ email: user.email, before, after });
     reload();
+    onChannelsChanged();
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -145,7 +149,14 @@ function UserRow({
 
   function saveCharge() {
     const arr = chargeText.split(",").map((s) => s.trim()).filter(Boolean);
-    void onPatchCharge(user, arr);
+    const dedupe = Array.from(new Set(arr));
+    if (dedupe.length !== arr.length) {
+      // 중복 차단 — 이전 저장값으로 입력란 복원
+      alert("중복된 채널 이름이 있습니다. 이전 값으로 되돌립니다.");
+      setChargeText((user.charge_channel ?? []).join(", "));
+      return;
+    }
+    void onPatchCharge(user, dedupe);
   }
 
   const roleColor =
@@ -254,7 +265,7 @@ function SavedModal({ result, onClose }: { result: SaveResult; onClose: () => vo
 //   - admin: 자기 charge_channel 만 (배열 그대로 옵션으로 사용)
 //   - superadmin: 기존 모든 채널 + "+ 새 채널 직접 입력" 모드
 // ─────────────────────────────────────────────────────────────────────
-function RestaurantInput({ me }: { me: MeResponse }) {
+function RestaurantInput({ me, channelsRevision }: { me: MeResponse; channelsRevision: number }) {
   const [allChannels, setAllChannels] = useState<Channel[]>([]);
   const [channelName, setChannelName] = useState("");
   const [customMode, setCustomMode] = useState(false);  // superadmin 새 채널 모드
@@ -268,9 +279,10 @@ function RestaurantInput({ me }: { me: MeResponse }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // channelsRevision 이 바뀔 때마다 채널 목록 재로드 — 회원관리에서 charge_channel 변경 즉시 반영
   useEffect(() => {
     api.listChannels().then(setAllChannels).catch(() => setAllChannels([]));
-  }, []);
+  }, [channelsRevision]);
 
   // 채널 옵션:
   //   - admin: charge_channel 배열 그대로 (DB 미존재여도 OK — 백엔드가 자동 생성)
