@@ -6,14 +6,27 @@ import { api, type Channel, type MeResponse, type UserUpdateBody } from "@/lib/a
 import { useMe } from "@/lib/me";
 import { isAdmin, isSuperadmin } from "@/lib/role";
 
+// 검색 페이지(app/page.tsx) 와 동일한 카테고리 목록
+const CUISINES: string[] = [
+  "한식", "양식", "일식", "중식", "분식", "카페",
+  "베이커리", "디저트", "아시안", "패스트푸드",
+];
+
 export default function AdminPage() {
   const { me, loading } = useMe();
   // charge_channel 변경 시 RestaurantInput 의 채널 목록을 즉시 재로드하기 위한 키
   const [channelsRevision, setChannelsRevision] = useState(0);
   const bumpChannels = () => setChannelsRevision((v) => v + 1);
+  // 한 번 admin 으로 검증되면 이후 재검사 스킵 (TOKEN_REFRESHED 등으로 me 가 깜빡 null 이 돼도 화면 유지)
+  const [verifiedAdmin, setVerifiedAdmin] = useState(false);
+  useEffect(() => {
+    if (me && isAdmin(me)) setVerifiedAdmin(true);
+  }, [me]);
 
-  if (loading) return <div className="text-sm font-bold text-neutral-500">권한 확인 중…</div>;
-  if (!isAdmin(me)) return <div className="text-sm font-bold text-red-500">관리자만 접근할 수 있습니다.</div>;
+  if (!verifiedAdmin) {
+    if (loading) return <div className="text-sm font-bold text-neutral-500">권한 확인 중…</div>;
+    if (!isAdmin(me)) return <div className="text-sm font-bold text-red-500">관리자만 접근할 수 있습니다.</div>;
+  }
 
   return (
     <div className="space-y-8">
@@ -148,11 +161,12 @@ function UserRow({
   }, [user.charge_channel]);
 
   function saveCharge() {
-    const arr = chargeText.split(",").map((s) => s.trim()).filter(Boolean);
+    // 채널명 정규화: 좌우 공백 + 내부 공백 모두 제거. "맛있는 녀석들" === "맛있는녀석들"
+    const normalize = (s: string) => s.replace(/\s+/g, "");
+    const arr = chargeText.split(",").map((s) => s.trim()).filter(Boolean).map(normalize).filter(Boolean);
     const dedupe = Array.from(new Set(arr));
     if (dedupe.length !== arr.length) {
-      // 중복 차단 — 이전 저장값으로 입력란 복원
-      alert("중복된 채널 이름이 있습니다. 이전 값으로 되돌립니다.");
+      alert("중복된 채널 이름이 있습니다 (공백 무시 비교). 이전 값으로 되돌립니다.");
       setChargeText((user.charge_channel ?? []).join(", "));
       return;
     }
@@ -385,7 +399,17 @@ function RestaurantInput({ me, channelsRevision }: { me: MeResponse; channelsRev
           <Input value={address} onChange={setAddress} required />
         </Field>
         <Field label="카테고리">
-          <Input value={cuisine} onChange={setCuisine} placeholder="한식 / 일식 / 중식 / …" />
+          <select
+            value={cuisine}
+            onChange={(e) => setCuisine(e.target.value)}
+            className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold focus:border-brand focus:outline-none"
+            style={{ color: "rgb(20 30 80)" }}
+          >
+            <option value="">— 선택 —</option>
+            {CUISINES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </Field>
         <Field label="네이버 지도 URL" hint="https://map.naver.com/...">
           <Input value={naverUrl} onChange={setNaverUrl} placeholder="https://map.naver.com/..." />

@@ -1,11 +1,18 @@
 """맛집 검색/조회 + 작성/수정 (admin/superadmin)."""
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_admin
 from ..services.supabase_client import get_anon_client, get_service_client
+
+
+def _norm_channel(name: str) -> str:
+    """채널명 정규화 — 모든 공백 제거. users.py 의 동일 함수와 일치."""
+    return re.sub(r"\s+", "", (name or "").strip())
 
 router = APIRouter(prefix="/restaurants", tags=["restaurants"])
 
@@ -122,10 +129,13 @@ class RestaurantPayload(BaseModel):
 @router.post("")
 def create_restaurant(body: RestaurantPayload, user: dict = Depends(require_admin)) -> dict:
     sb = get_service_client()
-    # admin 은 자기가 charge_channel 에 등록된 채널에 대해서만 생성 허용
-    allowed = set(user.get("charge_channel") or []) if user["role"] == "admin" else None
-    if allowed is not None:
-        bad = [c for c in body.channels if c not in allowed]
+    # 입력된 채널명을 모두 정규화 (공백 제거)
+    norm_channels = [_norm_channel(c) for c in body.channels if _norm_channel(c)]
+
+    # admin 은 자기 charge_channel 채널만 (정규화 비교)
+    if user["role"] == "admin":
+        allowed = {_norm_channel(c) for c in (user.get("charge_channel") or [])}
+        bad = [c for c in norm_channels if c not in allowed]
         if bad:
             raise HTTPException(status_code=403, detail=f"not in your charge_channel: {bad}")
 
@@ -134,14 +144,20 @@ def create_restaurant(body: RestaurantPayload, user: dict = Depends(require_admi
     res = sb.table("restaurants").upsert(payload, on_conflict="current_name,current_address").execute()
     rid = res.data[0]["id"]
 
-    # appearances 자동 생성. 채널이 DB 에 없으면 channel_type='other' 로 자동 생성.
-    for ch_name in body.channels:
-        existing = sb.table("channels").select("id").eq("name", ch_name).execute().data or []
-        if existing:
-            ch_id = existing[0]["id"]
+    # 모든 채널 한 번에 로드 후 정규화 비교로 매칭 (시드의 공백 포함 이름도 흡수)
+    all_channels = sb.table("channels").select("id, name").execute().data or []
+    by_norm: dict[str, dict] = {}
+    for c in all_channels:
+        by_norm.setdefault(_norm_channel(c["name"]), c)
+
+    for norm in norm_channels:
+        matched = by_norm.get(norm)
+        if matched:
+            ch_id = matched["id"]
         else:
-            created = sb.table("channels").insert({"name": ch_name, "channel_type": "other"}).execute()
+            created = sb.table("channels").insert({"name": norm, "channel_type": "other"}).execute()
             ch_id = created.data[0]["id"]
+            by_norm[norm] = {"id": ch_id, "name": norm}
         sb.table("appearances").insert({
             "restaurant_id": rid,
             "channel_id": ch_id,
