@@ -5,14 +5,22 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type MeResponse } from "./api";
 import { getSupabaseBrowser } from "./supabase";
 
-const SESSION_MAX_MS = 8 * 60 * 60 * 1000; // 8시간
+// ⏱ 세션 절대 만료 시간 — 디버깅 시 1분으로 바꾸려면 아래 한 줄을 1 * 60 * 1000 으로 교체.
+const SESSION_MAX_MS = 8 * 60 * 60 * 1000; // 8시간 (디버그: 1 * 60 * 1000 = 1분)
+// const SESSION_MAX_MS = 1 * 60 * 1000; // 디버그용 1분
 const SESSION_KEY = "session_start";
+// ⏱ 폴링 간격 — 만료 검사 주기. SESSION_MAX_MS 보다 짧아야 의미 있음.
+const POLL_MS = Math.min(60 * 1000, Math.max(5 * 1000, SESSION_MAX_MS / 4));
 
-/** 절대 만료 — 8시간 초과 시 로그아웃 + 홈으로 */
+// 만료 처리 중 재진입 방지 (useMe 가 Header/Admin 등 여러 곳에서 호출되어 alert 가 N번 뜨던 문제 해결)
+let _expiring = false;
+
 async function forceLogoutOnExpiry(): Promise<boolean> {
+  if (_expiring) return false;
   const start = localStorage.getItem(SESSION_KEY);
   if (!start) return false;
   if (Date.now() - Number(start) <= SESSION_MAX_MS) return false;
+  _expiring = true;
   try {
     await getSupabaseBrowser().auth.signOut();
   } catch {}
@@ -69,8 +77,8 @@ export function useMe(): { me: MeResponse | null; loading: boolean } {
       }
     });
 
-    // 1분 간격 만료 폴링
-    const interval = setInterval(() => { void forceLogoutOnExpiry(); }, 60 * 1000);
+    // 만료 폴링 — POLL_MS 간격 (SESSION_MAX_MS 에 비례, 최소 5초·최대 1분)
+    const interval = setInterval(() => { void forceLogoutOnExpiry(); }, POLL_MS);
 
     return () => {
       sub.subscription.unsubscribe();
