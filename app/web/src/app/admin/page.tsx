@@ -33,7 +33,7 @@ export default function AdminPage() {
       <h1 className="font-soft text-3xl font-bold tracking-tight" style={{ color: "rgb(20 30 80)" }}>DB 관리</h1>
 
       {isSuperadmin(me) && <UserManagement onChannelsChanged={bumpChannels} />}
-      <RestaurantInput me={me!} channelsRevision={channelsRevision} />
+      {me && <RestaurantInput me={me} channelsRevision={channelsRevision} />}
     </div>
   );
 }
