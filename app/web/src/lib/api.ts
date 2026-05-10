@@ -33,6 +33,15 @@ export const api = {
   topAppearances: (rid: number) => request<Appearance[]>(`/restaurants/${rid}/top-appearances`),
   createRestaurant: (body: unknown) =>
     request<{ id: number }>(`/restaurants`, { method: "POST", body: JSON.stringify(body) }, true),
+  updateRestaurantGeo: (
+    rid: number,
+    body: { lat: number; lng: number; sido?: string | null; sigungu?: string | null; dong?: string | null },
+  ) =>
+    request<{ ok: boolean }>(
+      `/restaurants/${rid}/geo`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      true,
+    ),
 
   // channels
   listChannels: () => request<Channel[]>(`/channels`),
