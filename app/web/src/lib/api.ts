@@ -48,6 +48,10 @@ export const api = {
   channelRanking: () => request<RankingRow[]>(`/channels/ranking`),
   appearanceRanking: () => request<AppearanceScore[]>(`/channels/appearances/ranking`),
   trendingAppearances: () => request<AppearanceScore[]>(`/channels/appearances/trending`),
+  updateChannel: (id: number, body: ChannelUpdateBody) =>
+    request<{ ok: boolean }>(`/channels/${id}`, { method: "PATCH", body: JSON.stringify(body) }, true),
+  fetchChannelThumbnail: (id: number) =>
+    request<{ thumbnail_url: string }>(`/channels/${id}/fetch-thumbnail`, { method: "POST" }, true),
 
   // auth / me
   me: () => request<MeResponse | null>(`/auth/me`, undefined, true),
@@ -94,6 +98,16 @@ export type Channel = {
   channel_type: "tv" | "youtube" | "blog" | "other";
   platform?: string | null;
   thumbnail_url?: string | null;
+  wiki_url?: string | null;
+  description?: string | null;
+};
+
+export type ChannelUpdateBody = {
+  channel_type?: "tv" | "youtube" | "blog" | "other";
+  platform?: string | null;
+  wiki_url?: string | null;
+  thumbnail_url?: string | null;
+  description?: string | null;
 };
 
 export type Appearance = {

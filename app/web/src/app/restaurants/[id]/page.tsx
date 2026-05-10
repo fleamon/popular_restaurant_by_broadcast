@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { api, type Appearance, type Restaurant } from "@/lib/api";
+import { shareKakaoTalk } from "@/lib/kakao-share";
 
 export default function RestaurantDetailPage() {
   const params = useParams<{ id: string }>();
@@ -71,7 +72,7 @@ export default function RestaurantDetailPage() {
         )}
       </div>
 
-      <ShareBar />
+      <ShareBar restaurant={restaurant} featured={featured} ytId={ytId} />
 
       {/* 영상 목록 (좋아요순) */}
       <section>
@@ -115,7 +116,15 @@ function ExtLink({ href, className, children }: { href: string; className?: stri
   );
 }
 
-function ShareBar() {
+function ShareBar({
+  restaurant,
+  featured,
+  ytId,
+}: {
+  restaurant: Restaurant;
+  featured: Appearance | null;
+  ytId: string | null;
+}) {
   const [copied, setCopied] = useState(false);
 
   const url = typeof window !== "undefined" ? window.location.href : "";
@@ -126,13 +135,25 @@ function ShareBar() {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  function shareKakao() {
-    // SDK 미연동 환경 — 일단 Web Share API 폴백 + 안내
-    if (typeof navigator !== "undefined" && (navigator as Navigator).share) {
-      (navigator as Navigator).share({ url, title: "백안맛지도" }).catch(() => {});
-    } else {
+  async function shareKakao() {
+    // 카카오 JavaScript SDK 직접 호출 — Web Share API 의 브라우저 확장 가로채기 회피.
+    const imageUrl = ytId
+      ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`
+      : `${window.location.origin}/white_eyes_blue.png`;
+    const description = [
+      restaurant.current_address,
+      featured?.channels?.name,
+      featured?.episode_title,
+    ].filter(Boolean).join(" · ");
+    const ok = await shareKakaoTalk({
+      title: restaurant.current_name,
+      description: description || "백안맛지도",
+      imageUrl,
+      url,
+    });
+    if (!ok) {
       copyLink();
-      alert("카카오 SDK 미설정 — 링크를 복사했습니다.");
+      alert("카카오 공유를 사용할 수 없어 링크를 복사했습니다.\n(Kakao Developers '플랫폼 → Web' 도메인 등록 확인)");
     }
   }
 

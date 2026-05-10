@@ -8,7 +8,17 @@ import {
   useKakaoLoader,
 } from "react-kakao-maps-sdk";
 
-import { api, type Appearance, type Channel, type Restaurant } from "@/lib/api";
+import { api, type Appearance, type Restaurant } from "@/lib/api";
+
+function extractYouTubeId(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
+function ytThumbUrl(id: string | null, size: "default" | "mqdefault" | "hqdefault" = "mqdefault"): string | null {
+  return id ? `https://img.youtube.com/vi/${id}/${size}.jpg` : null;
+}
 
 type Props = {
   restaurants: Restaurant[];
@@ -28,32 +38,29 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: 
   const [topApps, setTopApps] = useState<Appearance[]>([]);
   const [busy, setBusy] = useState(false);
 
-  // 핀 표시용 채널 썸네일을 한 번에 로드해 매핑.
-  const [channelThumbs, setChannelThumbs] = useState<Map<number, string>>(new Map());
-  // restaurant_id → channel_id (대표 채널) 매핑
-  const [restaurantChannel, setRestaurantChannel] = useState<Map<number, number>>(new Map());
+  // restaurant_id → 대표 appearance 의 핀 표시 정보(채널 썸네일 + 채널명 첫글자)
+  type RepInfo = { channelName: string; channelThumb: string | null };
+  const [restaurantRep, setRestaurantRep] = useState<Map<number, RepInfo>>(new Map());
 
-  useEffect(() => {
-    api.listChannels().then((channels: Channel[]) => {
-      const m = new Map<number, string>();
-      channels.forEach((c) => { if (c.thumbnail_url) m.set(c.id, c.thumbnail_url); });
-      setChannelThumbs(m);
-    }).catch(() => {});
-  }, []);
-
-  // 각 restaurant 의 대표 appearance(채널) 로드 — 핀 색깔/이미지 매핑
   useEffect(() => {
     const ids = restaurants.map((r) => r.id);
     if (ids.length === 0) {
-      setRestaurantChannel(new Map());
+      setRestaurantRep(new Map());
       return;
     }
     // 너무 많으면 부담 — 100개로 제한
     const limited = ids.slice(0, 100);
     Promise.all(limited.map((id) => api.topAppearance(id).catch(() => null))).then((apps) => {
-      const m = new Map<number, number>();
-      apps.forEach((a) => { if (a) m.set(a.restaurant_id, a.channel_id); });
-      setRestaurantChannel(m);
+      const m = new Map<number, RepInfo>();
+      apps.forEach((a) => {
+        if (a) {
+          m.set(a.restaurant_id, {
+            channelName: a.channels?.name ?? "",
+            channelThumb: a.channels?.thumbnail_url ?? null,
+          });
+        }
+      });
+      setRestaurantRep(m);
     });
   }, [restaurants]);
 
@@ -77,15 +84,16 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: 
     <div className="relative h-full w-full">
       <KakaoMap center={center} level={DEFAULT_LEVEL} style={{ width: "100%", height: "100%" }}>
         {pinnable.map((r) => {
-          const channelId = restaurantChannel.get(r.id);
-          const thumb = channelId ? channelThumbs.get(channelId) : null;
+          const rep = restaurantRep.get(r.id);
+          const thumb = rep?.channelThumb ?? null;
+          const letter = rep?.channelName?.trim()?.[0] ?? null;
           return (
             <CustomOverlayMap
               key={r.id}
               position={{ lat: r.lat as number, lng: r.lng as number }}
               yAnchor={1}
             >
-              <ChannelPin thumb={thumb} onClick={() => handlePinClick(r)} />
+              <ChannelPin thumb={thumb} letter={letter} onClick={() => handlePinClick(r)} />
             </CustomOverlayMap>
           );
         })}
@@ -106,7 +114,15 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: 
 // ─────────────────────────────────────────────────────────────────────
 // 채널 썸네일 핀 — 둥근 마커 + 채널 대표 이미지
 // ─────────────────────────────────────────────────────────────────────
-function ChannelPin({ thumb, onClick }: { thumb: string | null | undefined; onClick: () => void }) {
+function ChannelPin({
+  thumb,
+  letter,
+  onClick,
+}: {
+  thumb: string | null | undefined;
+  letter: string | null;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
@@ -117,6 +133,8 @@ function ChannelPin({ thumb, onClick }: { thumb: string | null | undefined; onCl
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={thumb} alt="" className="h-full w-full object-cover" />
+        ) : letter ? (
+          <div className="grid h-full w-full place-items-center bg-brand text-brand-fg text-base font-bold">{letter}</div>
         ) : (
           <div className="grid h-full w-full place-items-center bg-brand text-brand-fg text-xs font-bold">●</div>
         )}
@@ -199,7 +217,10 @@ function PinModal({
 }
 
 function VideoRow({ app }: { app: Appearance }) {
-  const url = app.source_url ?? (app.youtube_video_id ? `https://www.youtube.com/watch?v=${app.youtube_video_id}` : null);
+  const ytId = app.youtube_video_id ?? extractYouTubeId(app.source_url);
+  const url = app.source_url ?? (ytId ? `https://www.youtube.com/watch?v=${ytId}` : null);
+  // 자세히보기 페이지의 YouTube 임베드와 동일한 영상의 썸네일을 사용.
+  const thumb = app.thumbnail_url ?? ytThumbUrl(ytId, "mqdefault");
   const Wrap = url
     ? ({ children }: { children: React.ReactNode }) => (
         <a href={url} target="_blank" rel="noreferrer" className="block hover:bg-brand-surface">
@@ -211,9 +232,9 @@ function VideoRow({ app }: { app: Appearance }) {
     <li>
       <Wrap>
         <div className="flex gap-3 p-3">
-          {app.thumbnail_url ? (
+          {thumb ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={app.thumbnail_url} alt="" className="h-14 w-20 shrink-0 rounded object-cover" />
+            <img src={thumb} alt="" className="h-14 w-20 shrink-0 rounded object-cover" />
           ) : (
             <div className="h-14 w-20 shrink-0 rounded bg-neutral-100" />
           )}
