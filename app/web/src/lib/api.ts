@@ -31,6 +31,7 @@ export const api = {
   topRestaurants: (limit = 10) => request<Restaurant[]>(`/restaurants/top?limit=${limit}`),
   topAppearance: (rid: number) => request<Appearance | null>(`/restaurants/${rid}/top-appearance`),
   topAppearances: (rid: number) => request<Appearance[]>(`/restaurants/${rid}/top-appearances`),
+  externalInfo: (rid: number) => request<ExternalInfo>(`/restaurants/${rid}/external-info`),
   createRestaurant: (body: unknown) =>
     request<{ id: number }>(`/restaurants`, { method: "POST", body: JSON.stringify(body) }, true),
   updateRestaurantGeo: (
@@ -85,8 +86,12 @@ export type Restaurant = {
   lng?: number | null;
   naver_map_url?: string | null;
   kakao_map_url?: string | null;
+  naver_place_id?: string | null;
+  kakao_place_id?: string | null;
   naver_rating?: number | null;
   kakao_rating?: number | null;
+  phone?: string | null;
+  notes?: string | null;
   likes?: number;
   dislikes?: number;
   net_score?: number;
@@ -142,6 +147,19 @@ export type AppearanceScore = {
 };
 
 export type RankingRow = { id: number; name: string; likes: number; dislikes: number; net_score: number };
+
+export type ExternalInfo = {
+  place_id: string | null;
+  naver: {
+    name?: string;
+    category?: { category?: string };
+    address?: { address?: string; roadAddress?: string };
+    businessHours?: { description?: string };
+    visitorReviews?: { displayText?: string };
+    blogReviews?: { total?: number };
+    images?: { images?: { origin: string }[] };
+  } | null;
+};
 
 export type VoteBody = {
   target_type: "restaurant" | "channel" | "appearance";

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
-import { api, type Appearance, type Restaurant } from "@/lib/api";
+import { api, type Appearance, type ExternalInfo, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
 
 export default function RestaurantDetailPage() {
@@ -12,11 +12,12 @@ export default function RestaurantDetailPage() {
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [apps, setApps] = useState<Appearance[]>([]);
+  const [ext, setExt] = useState<ExternalInfo | null>(null);
 
   useEffect(() => {
     if (!id) return;
     const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-    // 두 호출 모두 개별 catch 로 unhandled rejection 방지 (FastAPI 미가동 등)
+    // 세 호출 모두 개별 catch 로 unhandled rejection 방지 (FastAPI 미가동 등)
     fetch(`${base}/restaurants/${id}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((r) => setRestaurant(r))
@@ -24,6 +25,9 @@ export default function RestaurantDetailPage() {
     api.topAppearances(id)
       .then((a) => setApps(a))
       .catch(() => setApps([]));
+    api.externalInfo(id)
+      .then((e) => setExt(e))
+      .catch(() => setExt(null));
   }, [id]);
 
   if (!restaurant) return <div className="text-sm font-bold text-neutral-500">불러오는 중…</div>;
@@ -74,6 +78,9 @@ export default function RestaurantDetailPage() {
 
       <ShareBar restaurant={restaurant} featured={featured} ytId={ytId} />
 
+      {/* 식당 정보 (네이버 플레이스) */}
+      <PlaceInfo restaurant={restaurant} ext={ext} />
+
       {/* 영상 목록 (좋아요순) */}
       <section>
         <h2 className="font-soft mb-2 text-xl font-bold text-brand">소개된 영상</h2>
@@ -113,6 +120,134 @@ function ExtLink({ href, className, children }: { href: string; className?: stri
     >
       {children}
     </a>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 식당 정보 패널 — 네이버 플레이스 summary 기반.
+//   - 카테고리·영업시간·도로명/지번·리뷰수
+//   - 사진 그리드 (최대 6장)
+//   - 네이버 메뉴/리뷰/홈 외부 링크
+// summary 호출 실패(ext.naver===null)시에도 우리 DB 기본 정보(주소·전화·메모)는 렌더.
+// ─────────────────────────────────────────────────────────────────────
+function PlaceInfo({ restaurant, ext }: { restaurant: Restaurant; ext: ExternalInfo | null }) {
+  const naver = ext?.naver ?? null;
+  const placeId = ext?.place_id ?? null;
+  const images = (naver?.images?.images ?? []).slice(0, 6);
+
+  return (
+    <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-5">
+      <h2 className="font-soft text-xl font-bold text-brand">식당 정보</h2>
+
+      {/* 메타 칩 한 줄 — 카테고리 / 영업시간 */}
+      <div className="flex flex-wrap gap-2 text-xs font-bold">
+        {naver?.category?.category && (
+          <span className="rounded-full bg-brand-surface px-3 py-1 text-brand">
+            #{naver.category.category}
+          </span>
+        )}
+        {restaurant.cuisine && (
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-neutral-700">
+            {restaurant.cuisine}
+          </span>
+        )}
+        {naver?.businessHours?.description && (
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+            🕒 {naver.businessHours.description}
+          </span>
+        )}
+        {naver?.visitorReviews?.displayText && (
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+            ⭐ {naver.visitorReviews.displayText}
+          </span>
+        )}
+        {typeof naver?.blogReviews?.total === "number" && naver.blogReviews.total > 0 && (
+          <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
+            ✍️ 블로그 리뷰 {naver.blogReviews.total.toLocaleString()}
+          </span>
+        )}
+      </div>
+
+      {/* 위치 */}
+      <div>
+        <h3 className="mb-1 text-sm font-bold text-neutral-800">위치</h3>
+        <ul className="space-y-1 text-sm text-neutral-700">
+          {(naver?.address?.roadAddress || restaurant.current_address) && (
+            <li>
+              <span className="mr-2 inline-block w-12 text-xs font-bold text-neutral-500">도로명</span>
+              {naver?.address?.roadAddress ?? restaurant.current_address}
+            </li>
+          )}
+          {naver?.address?.address && (
+            <li>
+              <span className="mr-2 inline-block w-12 text-xs font-bold text-neutral-500">지번</span>
+              {naver.address.address}
+            </li>
+          )}
+        </ul>
+      </div>
+
+      {/* 사진 그리드 */}
+      {images.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-bold text-neutral-800">사진</h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {images.map((img, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={img.origin}
+                alt=""
+                loading="lazy"
+                className="aspect-square w-full rounded-lg object-cover ring-1 ring-neutral-200"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 메모 (있으면) */}
+      {restaurant.notes && (
+        <div>
+          <h3 className="mb-1 text-sm font-bold text-neutral-800">메모</h3>
+          <p className="whitespace-pre-line text-sm text-neutral-700">{restaurant.notes}</p>
+        </div>
+      )}
+
+      {/* 외부 링크 — 메뉴/리뷰는 네이버 공식 페이지로 */}
+      {placeId ? (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <a
+            href={`https://pcmap.place.naver.com/restaurant/${placeId}/menu/list`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md bg-[#03C75A] px-3 py-2 text-sm font-bold text-white hover:opacity-90"
+          >
+            🍴 메뉴 보기 (네이버)
+          </a>
+          <a
+            href={`https://pcmap.place.naver.com/restaurant/${placeId}/review/visitor`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-[#03C75A] px-3 py-2 text-sm font-bold text-[#03C75A] hover:bg-emerald-50"
+          >
+            ⭐ 방문자 리뷰
+          </a>
+          <a
+            href={`https://pcmap.place.naver.com/restaurant/${placeId}/home`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-neutral-200 px-3 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+          >
+            네이버 플레이스 전체 →
+          </a>
+        </div>
+      ) : (
+        <p className="text-xs text-neutral-400">
+          (네이버 플레이스 ID 가 없어 메뉴/리뷰 외부 링크는 표시되지 않습니다)
+        </p>
+      )}
+    </section>
   );
 }
 
