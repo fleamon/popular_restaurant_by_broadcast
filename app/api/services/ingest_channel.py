@@ -61,6 +61,9 @@ def _upsert_channel(meta: youtube_api.ChannelMeta) -> dict:
 
     if existing:
         patch: dict = {}
+        # 이름 — YouTube 타이틀이 정식 명칭이라 다르면 갱신
+        if meta.title and existing.get("name") != meta.title:
+            patch["name"] = meta.title
         # wiki_url 이 비어있거나 /channel/UC... 비표준 형태면 @handle 형태로 표준화
         cur_url = existing.get("wiki_url") or ""
         if not cur_url or ("/channel/" in cur_url and meta.handle):

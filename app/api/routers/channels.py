@@ -82,44 +82,6 @@ def _extract_og_image(html: str) -> str | None:
     return m.group(1) or m.group(2)
 
 
-class MergeBody(BaseModel):
-    src_id: int   # 삭제될 행
-    dst_id: int   # 유지될 행 (모든 appearances 가 여기로 이동)
-
-
-@router.post("/merge", dependencies=[Depends(require_superadmin)])
-def merge_channels(body: MergeBody) -> dict:
-    """src 채널의 모든 appearances 를 dst 로 옮기고 src 를 삭제. 회원의 charge_channel 도 치환.
-
-    중복 채널 정리 용도. 예: '먹을텐데'(id=4) ← '성시경 SUNG SI KYUNG'(id=7) 병합.
-    """
-    if body.src_id == body.dst_id:
-        raise HTTPException(status_code=400, detail="src_id == dst_id")
-    sb = get_service_client()
-    src = sb.table("channels").select("id, name").eq("id", body.src_id).execute().data
-    dst = sb.table("channels").select("id, name").eq("id", body.dst_id).execute().data
-    if not src or not dst:
-        raise HTTPException(status_code=404, detail="채널을 찾지 못함")
-    src_name = src[0]["name"]
-    dst_name = dst[0]["name"]
-
-    # 1) appearances 채널 ID 이동
-    sb.table("appearances").update({"channel_id": body.dst_id}).eq("channel_id", body.src_id).execute()
-
-    # 2) users.charge_channel 배열에서 src 이름을 dst 이름으로 치환 (dedupe)
-    if src_name != dst_name:
-        users = sb.table("users").select("sequence, charge_channel").execute().data or []
-        for u in users:
-            lst = u.get("charge_channel") or []
-            if src_name in lst:
-                new_lst = list(dict.fromkeys([dst_name if n == src_name else n for n in lst]))
-                sb.table("users").update({"charge_channel": new_lst}).eq("sequence", u["sequence"]).execute()
-
-    # 3) src 삭제
-    sb.table("channels").delete().eq("id", body.src_id).execute()
-    return {"ok": True, "moved_to": dst_name}
-
-
 @router.post("/{channel_id}/fetch-thumbnail", dependencies=[Depends(require_superadmin)])
 def fetch_channel_thumbnail(channel_id: int) -> dict:
     """채널의 wiki_url(YouTube 채널 URL 권장) 페이지에서 og:image 를 읽어 thumbnail_url 에 저장."""

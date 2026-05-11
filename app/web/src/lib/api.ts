@@ -92,12 +92,6 @@ export const api = {
     request<{ ok: boolean }>(`/channels/${id}`, { method: "PATCH", body: JSON.stringify(body) }, true),
   fetchChannelThumbnail: (id: number) =>
     request<{ thumbnail_url: string }>(`/channels/${id}/fetch-thumbnail`, { method: "POST" }, true),
-  mergeChannels: (src_id: number, dst_id: number) =>
-    request<{ ok: boolean; moved_to: string }>(
-      `/channels/merge`,
-      { method: "POST", body: JSON.stringify({ src_id, dst_id }) },
-      true,
-    ),
 
   // auth / me
   me: () => request<MeResponse | null>(`/auth/me`, undefined, true),
