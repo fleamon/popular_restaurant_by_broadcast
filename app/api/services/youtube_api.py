@@ -26,8 +26,9 @@ class VideoMeta:
 
 @dataclass(frozen=True)
 class ChannelMeta:
-    channel_id: str           # UC... (YouTube 내부 id)
+    channel_id: str           # UC... (YouTube 내부 id, 영구 식별자)
     title: str                # 채널 이름 (예: "성시경 SUNG SI KYUNG")
+    handle: str | None        # @sungsikyung (사용자 친화 식별자, customUrl)
     uploads_playlist_id: str  # 업로드 영상 재생목록 id (UU...)
     thumbnail_url: str | None
 
@@ -89,9 +90,12 @@ def _to_channel_meta(item: dict) -> ChannelMeta:
     thumbs = snippet.get("thumbnails") or {}
     # 'high' → 'medium' → 'default' 우선순위
     thumb = (thumbs.get("high") or thumbs.get("medium") or thumbs.get("default") or {}).get("url")
+    custom = snippet.get("customUrl") or ""  # "@sungsikyung" 형태로 반환됨
+    handle = custom if custom.startswith("@") else (f"@{custom}" if custom else None)
     return ChannelMeta(
         channel_id=item["id"],
         title=snippet.get("title") or "",
+        handle=handle,
         uploads_playlist_id=related.get("uploads") or "",
         thumbnail_url=thumb,
     )

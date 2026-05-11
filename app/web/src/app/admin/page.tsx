@@ -332,11 +332,36 @@ function ChannelManagement({
     }
   }
 
+  async function merge(srcId: number, dstId: number) {
+    const src = rows.find((r) => r.id === srcId);
+    const dst = rows.find((r) => r.id === dstId);
+    if (!src || !dst) return;
+    const ok = window.confirm(
+      `'${src.name}' (id=${srcId}) → '${dst.name}' (id=${dstId})\n\n` +
+      `이 작업은 src 채널의 모든 맛집 영상(appearances)을 dst 로 옮기고, src 채널을 삭제합니다. ` +
+      `회원의 charge_channel 도 dst 이름으로 치환됩니다.\n\n계속하시겠습니까?`,
+    );
+    if (!ok) return;
+    setBusyId(srcId);
+    setMsg(null);
+    try {
+      const r = await api.mergeChannels(srcId, dstId);
+      setMsg(`✅ 병합 완료 → ${r.moved_to}`);
+      reload();
+      onChanged();
+    } catch (e) {
+      setMsg("❌ 병합 실패: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <section className="space-y-3">
       <h2 className="font-soft text-2xl font-bold" style={{ color: "rgb(20 30 80)" }}>채널 관리</h2>
       <p className="text-xs font-bold" style={{ color: "rgb(110 120 140)" }}>
         YouTube 채널 URL(예: https://www.youtube.com/@sungsikyung) 을 저장한 뒤 <b>🔄 자동 가져오기</b> 를 누르면 채널 아바타가 썸네일에 들어갑니다. 직접 이미지 URL 을 붙여넣어도 됩니다.
+        중복 채널은 우측 <b>병합 →</b> 셀렉트로 합쳐주세요.
       </p>
 
       <div className="overflow-auto rounded-lg border border-neutral-200">
@@ -356,9 +381,11 @@ function ChannelManagement({
               <ChannelRow
                 key={c.id}
                 channel={c}
+                others={rows.filter((r) => r.id !== c.id)}
                 busy={busyId === c.id}
                 onSave={save}
                 onFetch={autoFetch}
+                onMerge={merge}
               />
             ))}
             {rows.length === 0 && (
@@ -379,18 +406,23 @@ function ChannelManagement({
 
 function ChannelRow({
   channel,
+  others,
   busy,
   onSave,
   onFetch,
+  onMerge,
 }: {
   channel: Channel;
+  others: Channel[];
   busy: boolean;
   onSave: (id: number, body: ChannelUpdateBody) => Promise<void>;
   onFetch: (id: number) => Promise<void>;
+  onMerge: (srcId: number, dstId: number) => Promise<void>;
 }) {
   const [type, setType] = useState<Channel["channel_type"]>(channel.channel_type);
   const [wiki, setWiki] = useState(channel.wiki_url ?? "");
   const [thumb, setThumb] = useState(channel.thumbnail_url ?? "");
+  const [mergeDst, setMergeDst] = useState<number | "">("");
 
   // 외부 reload 시 입력란 동기화
   useEffect(() => {
@@ -466,6 +498,29 @@ function ChannelRow({
           >
             🔄 자동 가져오기
           </button>
+          {/* 병합 — 이 행(src)을 선택한 대상(dst)으로 합치고 src 삭제 */}
+          <div className="flex gap-1">
+            <select
+              value={mergeDst}
+              onChange={(e) => setMergeDst(e.target.value === "" ? "" : Number(e.target.value))}
+              disabled={busy}
+              className="flex-1 rounded border px-1 py-1 text-xs font-bold"
+              style={{ color: "rgb(20 30 80)" }}
+            >
+              <option value="">병합 →</option>
+              {others.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+            <button
+              disabled={busy || mergeDst === ""}
+              onClick={() => mergeDst !== "" && onMerge(channel.id, mergeDst)}
+              className="rounded bg-red-500 px-2 py-1 text-xs font-bold text-white disabled:opacity-50"
+              title="이 행을 선택한 채널로 병합 후 삭제"
+            >
+              합치기
+            </button>
+          </div>
         </div>
       </td>
     </tr>

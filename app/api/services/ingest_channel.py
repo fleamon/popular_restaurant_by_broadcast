@@ -15,28 +15,69 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", "", (s or "").strip())
 
 
-def _upsert_channel(name: str, channel_url: str, thumb: str | None) -> dict:
-    """채널을 정규화 이름으로 찾아 갱신/생성."""
+def _yt_identifiers(url: str) -> set[str]:
+    """YouTube URL/handle 에서 식별자 추출 — UC.. 또는 @handle.
+    같은 채널의 두 URL 은 적어도 하나의 식별자를 공유."""
+    if not url:
+        return set()
+    out: set[str] = set()
+    if "/channel/" in url:
+        cid = url.split("/channel/", 1)[1].split("/")[0].split("?")[0]
+        if cid:
+            out.add(cid)
+    if "/@" in url:
+        h = url.split("/@", 1)[1].split("/")[0].split("?")[0]
+        if h:
+            out.add("@" + h)
+    if url.startswith("@"):
+        out.add(url.split("?")[0])
+    return out
+
+
+def _upsert_channel(meta: youtube_api.ChannelMeta) -> dict:
+    """YouTube 식별자(UC.. + @handle) 우선으로 매칭 → 없으면 정규화 이름 매칭 → 없으면 생성.
+
+    매칭된 행은 user 의 표시 이름(name)을 보존하고 wiki_url 은 @handle 형태로 표준화.
+    """
     sb = get_service_client()
     rows = sb.table("channels").select("*").execute().data or []
-    norm_name = _norm(name)
-    existing = next((c for c in rows if _norm(c["name"]) == norm_name), None)
+
+    incoming_ids = {meta.channel_id}
+    if meta.handle:
+        incoming_ids.add(meta.handle)
+
+    # 1) 기존 행의 wiki_url 에서 식별자 추출하여 같은 채널 찾기
+    existing = next(
+        (c for c in rows if _yt_identifiers(c.get("wiki_url") or "") & incoming_ids),
+        None,
+    )
+    # 2) 식별자 매칭 실패 시 정규화 이름으로 한 번 더
+    if existing is None:
+        norm_title = _norm(meta.title)
+        existing = next((c for c in rows if _norm(c["name"]) == norm_title), None)
+
+    # 표준 URL — @handle 우선, 없으면 /channel/UC...
+    canonical_url = f"https://www.youtube.com/{meta.handle}" if meta.handle else f"https://www.youtube.com/channel/{meta.channel_id}"
+
     if existing:
-        patch = {}
-        if not existing.get("wiki_url"):
-            patch["wiki_url"] = channel_url
-        if not existing.get("thumbnail_url") and thumb:
-            patch["thumbnail_url"] = thumb
+        patch: dict = {}
+        # wiki_url 이 비어있거나 /channel/UC... 비표준 형태면 @handle 형태로 표준화
+        cur_url = existing.get("wiki_url") or ""
+        if not cur_url or ("/channel/" in cur_url and meta.handle):
+            patch["wiki_url"] = canonical_url
+        if not existing.get("thumbnail_url") and meta.thumbnail_url:
+            patch["thumbnail_url"] = meta.thumbnail_url
         if existing.get("channel_type") != "youtube":
             patch["channel_type"] = "youtube"
         if patch:
             sb.table("channels").update(patch).eq("id", existing["id"]).execute()
         return {**existing, **patch}
+
     created = sb.table("channels").insert({
-        "name": name,
+        "name": meta.title,
         "channel_type": "youtube",
-        "wiki_url": channel_url,
-        "thumbnail_url": thumb,
+        "wiki_url": canonical_url,
+        "thumbnail_url": meta.thumbnail_url,
     }).execute()
     return created.data[0]
 
@@ -105,10 +146,9 @@ def ingest_channel_stream(handle: str, max_videos: int, user_seq: int) -> Iterat
       - {"stage":"error", "message":...}
     """
     try:
-        # 1) 채널 해석
+        # 1) 채널 해석 + 식별자 기반 upsert (이미 있는 행이면 매칭)
         ch_meta = youtube_api.resolve_handle(handle)
-        ch_url = f"https://www.youtube.com/channel/{ch_meta.channel_id}"
-        ch_row = _upsert_channel(ch_meta.title, ch_url, ch_meta.thumbnail_url)
+        ch_row = _upsert_channel(ch_meta)
         yield {"stage": "channel", "channel": {"id": ch_row["id"], "name": ch_row["name"], "youtube_id": ch_meta.channel_id}}
 
         if not ch_meta.uploads_playlist_id:
