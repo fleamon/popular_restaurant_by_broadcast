@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -80,42 +81,50 @@ def _kakao_search(query: str, *, food_only: bool = True) -> list[dict]:
         return []
 
 
-def search(query: str, *, name_hint: str | None = None, address_hint: str | None = None) -> KakaoPlace | None:
-    """LLM 이 뽑은 이름/주소로 카카오 매칭.
+# 명확한 분점 표기 — 통째 제거할 패턴 (alternation 순서 무관, 길이로 매칭).
+_BRANCH_SUFFIX_RX = re.compile(r"(\d+호점|본점|분점|지점)$")
 
-    시도 순서 (각 단계마다 음식점 우선, 없으면 전체 카테고리):
-      1. 전체 쿼리("{이름} {주소}")
-      2. 이름 + 시구동 (주소 앞 3토큰)
-      3. 이름만
-      4. 주소만
-    하나라도 결과가 있으면 첫번째 채택. 음식점이면 +가중치.
+
+def _name_variants(name: str) -> list[str]:
+    """가게명 변형: 원본 + 분점 접미사 제거판 + 마지막 토큰 통째 제거판.
+
+    예:
+      '다람 강동본점'   → ['다람 강동본점', '다람 강동', '다람']
+      '스타벅스 강남역점' → ['스타벅스 강남역점', '스타벅스 강남역', '스타벅스']
+      '커피빈 1호점'    → ['커피빈 1호점', '커피빈']
+      '명동교자'        → ['명동교자']  (1토큰이라 변형 없음)
     """
-    name = (name_hint or "").strip()
-    address = (address_hint or "").strip()
-    candidates: list[str] = []
-    if query.strip():
-        candidates.append(query.strip())
-    if name and address:
-        short = " ".join(address.split()[:3])
-        if short and f"{name} {short}" not in candidates:
-            candidates.append(f"{name} {short}")
-    if name and name not in candidates:
-        candidates.append(name)
-    if address and address not in candidates:
-        candidates.append(address)
+    name = (name or "").strip()
+    if not name:
+        return []
+    out: list[str] = [name]
+    parts = name.split()
+    if len(parts) < 2 or not parts[-1].endswith("점"):
+        return out
+    last = parts[-1]
+    # (1) '본점/분점/지점/N호점' 같은 명확한 분점 표기는 통째 제거 → '강동본점' → '강동'
+    m = _BRANCH_SUFFIX_RX.search(last)
+    if m:
+        stripped = last[:m.start()]
+        if stripped:
+            v = " ".join(parts[:-1] + [stripped])
+            if v not in out:
+                out.append(v)
+    else:
+        # (2) 그 외 '점' 으로 끝나는 단어는 끝의 '점' 한 글자만 제거 → '강남역점' → '강남역'
+        stripped = last[:-1]
+        if stripped:
+            v = " ".join(parts[:-1] + [stripped])
+            if v not in out:
+                out.append(v)
+    # (3) 마지막 토큰 통째 제거 — 어느 경우든 안전 fallback ('다람 강동본점' → '다람')
+    without_last = " ".join(parts[:-1])
+    if without_last and without_last not in out:
+        out.append(without_last)
+    return out
 
-    docs: list[dict] = []
-    for q in candidates:
-        docs = _kakao_search(q, food_only=True)
-        if docs:
-            break
-        docs = _kakao_search(q, food_only=False)
-        if docs:
-            break
 
-    if not docs:
-        return None
-    d = docs[0]
+def _to_place(d: dict) -> KakaoPlace:
     sido, sigungu, dong = _split_address(d.get("address_name") or "")
     return KakaoPlace(
         place_id=str(d.get("id") or ""),
@@ -130,6 +139,50 @@ def search(query: str, *, name_hint: str | None = None, address_hint: str | None
         kakao_map_url=d.get("place_url") or None,
         category=d.get("category_name") or None,
     )
+
+
+def search(query: str, *, name_hint: str | None = None, address_hint: str | None = None) -> KakaoPlace | None:
+    """LLM 이 뽑은 이름/주소로 카카오 매칭.
+
+    가게명에서 분점 접미사(본점/분점/지점/N호점/역점/점) 를 점진적으로 떼면서
+    각 단계에서 [이름+시구동], [이름 단독] 을 음식점 우선 → 전체 카테고리로 시도.
+    하나라도 매칭되면 즉시 채택. 모두 실패하면 주소 단독으로 마지막 시도.
+    """
+    name = (name_hint or "").strip()
+    address = (address_hint or "").strip()
+    short_addr = " ".join(address.split()[:3]) if address else ""
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add(c: str) -> None:
+        c = c.strip()
+        if c and c not in seen:
+            seen.add(c)
+            candidates.append(c)
+
+    # 1) 사용자가 직접 넘긴 원본 쿼리
+    if query.strip():
+        add(query)
+
+    # 2) 이름 변형 × (시구동 동반 + 이름 단독)
+    for n in _name_variants(name):
+        if short_addr:
+            add(f"{n} {short_addr}")
+        add(n)
+
+    # 3) 마지막 수단 — 주소 단독
+    if address:
+        add(address)
+
+    for q in candidates:
+        docs = _kakao_search(q, food_only=True)
+        if docs:
+            return _to_place(docs[0])
+        docs = _kakao_search(q, food_only=False)
+        if docs:
+            return _to_place(docs[0])
+    return None
 
 
 def cuisine_from_category(category: str | None) -> str | None:
