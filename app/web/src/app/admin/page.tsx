@@ -478,57 +478,71 @@ function ChannelRow({
 //   - 백엔드: YouTube Data API → OpenAI 추출 → Kakao Local 보강 → DB 저장
 // ─────────────────────────────────────────────────────────────────────
 function ChannelIngest({ onChanged }: { onChanged: () => void }) {
-  const [handle, setHandle] = useState("");
+  const [handlesText, setHandlesText] = useState("");
   const [maxVideos, setMaxVideos] = useState(10);
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<IngestEvent[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // 줄바꿈/쉼표 구분, 공백 제거, dedupe.
+  const handles = Array.from(new Set(
+    handlesText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean),
+  ));
+
   async function run() {
-    if (!handle.trim() || running) return;
+    if (handles.length === 0 || running) return;
     setRunning(true);
     setEvents([]);
     setErrorMsg(null);
     try {
-      for await (const ev of api.ingestChannel(handle.trim(), maxVideos)) {
-        setEvents((prev) => [...prev, ev]);
-        if (ev.stage === "channel" || ev.stage === "restaurant_saved") onChanged();
+      for (let i = 0; i < handles.length; i++) {
+        const h = handles[i];
+        // 다중 채널 구분용 합성 이벤트
+        setEvents((prev) => [...prev, { stage: "batch_start", index: i + 1, total: handles.length, handle: h }]);
+        try {
+          for await (const ev of api.ingestChannel(h, maxVideos)) {
+            setEvents((prev) => [...prev, ev]);
+            if (ev.stage === "channel" || ev.stage === "restaurant_saved") onChanged();
+          }
+        } catch (e) {
+          // 한 채널 실패해도 다음 채널 계속 진행
+          setEvents((prev) => [...prev, { stage: "error", message: `${h}: ${e instanceof Error ? e.message : String(e)}` }]);
+        }
       }
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
     } finally {
       setRunning(false);
     }
   }
 
-  // 요약 카운트
+  // 요약 카운트 (전체 배치 누적)
   const savedCount = events.filter((e) => e.stage === "restaurant_saved").length;
   const skippedCount = events.filter((e) => e.stage === "restaurant_skipped").length;
-  const done = events.find((e) => e.stage === "done");
-  const channelEvt = events.find((e) => e.stage === "channel");
-  const videosFetched = events.find((e) => e.stage === "videos_fetched");
+  const doneChannels = events.filter((e) => e.stage === "done").length;
 
   return (
     <section className="space-y-3">
       <h2 className="font-soft text-2xl font-bold" style={{ color: "rgb(20 30 80)" }}>채널 자동 수집</h2>
       <p className="text-xs font-bold" style={{ color: "rgb(110 120 140)" }}>
-        YouTube 채널 핸들(예: <code className="font-mono">@sungsikyung</code>)과 가져올 영상 수를 입력하면, 영상 설명에서 가게를 자동으로 추출해 맛집·채널·영상 정보를 DB에 저장합니다.
-        영상당 ~5초 소요. 처리 중 페이지를 떠나지 마세요.
+        YouTube 채널 핸들을 <b>한 줄에 하나씩</b>(또는 쉼표 구분) 입력하면 순서대로 처리합니다.
+        영상 설명에서 가게를 자동 추출 → 카카오 보강 → 맛집·채널·영상 DB 저장. 영상당 ~5초 소요.
       </p>
 
       <div className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-brand bg-brand-surface p-3">
-        <label className="block">
-          <span className="mb-1 block text-xs font-bold text-neutral-700">채널 핸들/URL</span>
-          <input
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-            placeholder="@sungsikyung"
+        <label className="block flex-1 min-w-[280px]">
+          <span className="mb-1 block text-xs font-bold text-neutral-700">
+            채널 핸들/URL ({handles.length} 개)
+          </span>
+          <textarea
+            value={handlesText}
+            onChange={(e) => setHandlesText(e.target.value)}
+            placeholder={"@sungsikyung\n@bimirya\n@heebab"}
             disabled={running}
-            className="w-[260px] rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none"
+            rows={4}
+            className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-mono text-black focus:border-brand focus:outline-none"
           />
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-bold text-neutral-700">영상 수</span>
+          <span className="mb-1 block text-xs font-bold text-neutral-700">채널당 영상 수</span>
           <input
             type="number"
             min={1}
@@ -536,27 +550,28 @@ function ChannelIngest({ onChanged }: { onChanged: () => void }) {
             value={maxVideos}
             onChange={(e) => setMaxVideos(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
             disabled={running}
-            className="w-[100px] rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none"
+            className="w-[110px] rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none"
           />
         </label>
         <button
           type="button"
           onClick={run}
-          disabled={running || !handle.trim()}
+          disabled={running || handles.length === 0}
           className="rounded-md bg-brand px-4 py-2 text-sm font-bold text-brand-fg hover:bg-brand-hover disabled:opacity-50"
         >
-          {running ? "수집 중…" : "▶ 수집 시작"}
+          {running ? "수집 중…" : `▶ ${handles.length || 0}개 채널 수집 시작`}
         </button>
       </div>
 
       {/* 요약 라인 */}
-      {(channelEvt || videosFetched || running) && (
+      {(events.length > 0 || running) && (
         <div className="flex flex-wrap gap-3 text-xs font-bold text-neutral-700">
-          {channelEvt?.stage === "channel" && <span>📺 채널: {channelEvt.channel.name}</span>}
-          {videosFetched?.stage === "videos_fetched" && <span>🎬 영상 {videosFetched.count} 개</span>}
+          <span>📺 채널 {doneChannels} / {handles.length || "?"}</span>
           <span>✅ 저장 {savedCount}</span>
           <span>⏭ 스킵 {skippedCount}</span>
-          {done?.stage === "done" && <span style={{ color: "rgb(20 130 60)" }}>🏁 완료</span>}
+          {!running && doneChannels > 0 && (
+            <span style={{ color: "rgb(20 130 60)" }}>🏁 전체 완료</span>
+          )}
         </div>
       )}
 
@@ -564,7 +579,7 @@ function ChannelIngest({ onChanged }: { onChanged: () => void }) {
 
       {/* 이벤트 로그 — 최근부터 위로 */}
       {events.length > 0 && (
-        <div className="max-h-[280px] overflow-auto rounded-lg border border-neutral-200 bg-white p-2 text-xs">
+        <div className="max-h-[360px] overflow-auto rounded-lg border border-neutral-200 bg-white p-2 text-xs">
           <ul className="space-y-1">
             {[...events].reverse().map((ev, idx) => (
               <li key={events.length - idx} className="font-mono leading-snug">
@@ -580,6 +595,12 @@ function ChannelIngest({ onChanged }: { onChanged: () => void }) {
 
 function renderEvent(ev: IngestEvent): React.ReactNode {
   switch (ev.stage) {
+    case "batch_start":
+      return (
+        <span className="block border-t border-dashed border-brand pt-1 mt-1" style={{ color: "rgb(43 127 255)", fontWeight: 700 }}>
+          ━━━ [{ev.index}/{ev.total}] {ev.handle} ━━━
+        </span>
+      );
     case "channel":
       return <span style={{ color: "rgb(20 30 80)" }}>📺 채널 확인 — {ev.channel.name} (id={ev.channel.id})</span>;
     case "videos_fetched":

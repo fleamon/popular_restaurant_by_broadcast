@@ -22,28 +22,8 @@ def _guard(table: str) -> None:
         raise HTTPException(status_code=400, detail=f"table not editable: {table}")
 
 
-@router.post("/{table}")
-def create_row(table: str, payload: dict[str, Any]) -> dict:
-    _guard(table)
-    res = get_service_client().table(table).insert(payload).execute()
-    return {"data": res.data}
-
-
-@router.patch("/{table}/{row_id}")
-def update_row(table: str, row_id: int, payload: dict[str, Any]) -> dict:
-    _guard(table)
-    res = get_service_client().table(table).update(payload).eq("id", row_id).execute()
-    return {"data": res.data}
-
-
-@router.delete("/{table}/{row_id}")
-def delete_row(table: str, row_id: int) -> dict:
-    _guard(table)
-    get_service_client().table(table).delete().eq("id", row_id).execute()
-    return {"ok": True}
-
-
 # ─── 채널 자동 수집 (superadmin) ────────────────────────────────────
+# ⚠ 라우트 순서 주의: 아래 `/{table}` 와일드카드보다 먼저 등록해야 매칭이 안 가로채진다.
 class IngestBody(BaseModel):
     handle: str           # "@sungsikyung" 또는 https://www.youtube.com/@sungsikyung
     max_videos: int = 10  # 한 번에 처리할 영상 수 (1~100)
@@ -63,3 +43,25 @@ def ingest_channel(body: IngestBody, user: dict = Depends(require_superadmin)) -
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",  # nginx 류 프록시에서 버퍼링 방지
     })
+
+
+# ─── 일반 테이블 CRUD ────────────────────────────────────────────────
+@router.post("/{table}")
+def create_row(table: str, payload: dict[str, Any]) -> dict:
+    _guard(table)
+    res = get_service_client().table(table).insert(payload).execute()
+    return {"data": res.data}
+
+
+@router.patch("/{table}/{row_id}")
+def update_row(table: str, row_id: int, payload: dict[str, Any]) -> dict:
+    _guard(table)
+    res = get_service_client().table(table).update(payload).eq("id", row_id).execute()
+    return {"data": res.data}
+
+
+@router.delete("/{table}/{row_id}")
+def delete_row(table: str, row_id: int) -> dict:
+    _guard(table)
+    get_service_client().table(table).delete().eq("id", row_id).execute()
+    return {"ok": True}

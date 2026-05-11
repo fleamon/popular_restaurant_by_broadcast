@@ -234,8 +234,10 @@ export type UserUpdateBody = {
   nickname?: string;
 };
 
-/** 채널 자동 수집 SSE 이벤트 — backend ingest_channel_stream 의 dict 그대로. */
+/** 채널 자동 수집 SSE 이벤트 — backend ingest_channel_stream 의 dict 그대로.
+ * batch_start 는 프런트가 다중 핸들 처리 시 구분선 용도로 합성. */
 export type IngestEvent =
+  | { stage: "batch_start"; index: number; total: number; handle: string }
   | { stage: "channel"; channel: { id: number; name: string; youtube_id: string } }
   | { stage: "videos_fetched"; count: number }
   | { stage: "video_start"; i: number; n: number; video_id: string; title: string }
