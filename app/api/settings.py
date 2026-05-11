@@ -47,4 +47,7 @@ def get_settings() -> dict[str, Any]:
         "naver_client_secret":       pick("NAVER_CLIENT_SECRET",       "naver", "client_secret"),
         "kakao_rest_api_key":        pick("KAKAO_REST_API_KEY",        "kakao", "rest_api_key"),
         "kakao_js_key":              pick("KAKAO_JS_KEY",              "kakao", "javascript_key"),
+        "youtube_api_key":           pick("YOUTUBE_API_KEY",           "youtube", "api_key"),
+        "openai_api_key":            pick("OPENAI_API_KEY",            "openai", "api_key"),
+        "openai_model":              pick("OPENAI_MODEL",              "openai", "model") or "gpt-4o-mini",
     }

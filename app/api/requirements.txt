@@ -6,3 +6,4 @@ realtime>=2.0
 websockets>=13      # realtime 2.x 가 websockets.asyncio 를 사용하므로 하한 고정
 python-dotenv>=1.0
 httpx>=0.27
+openai>=1.40

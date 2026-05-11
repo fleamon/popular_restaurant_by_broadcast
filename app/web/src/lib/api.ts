@@ -20,6 +20,45 @@ async function request<T>(path: string, init?: RequestInit, withAuth = false): P
   return res.json() as Promise<T>;
 }
 
+/** SSE 스트림 헬퍼 — `data: <json>\n\n` 이벤트를 JSON 으로 파싱해 yield. 인증 포함. */
+async function* streamSSE<T>(path: string, body: unknown): AsyncGenerator<T> {
+  const sb = getSupabaseBrowser();
+  const { data } = await sb.auth.getSession();
+  const token = data.session?.access_token;
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`API ${res.status}: ${await res.text().catch(() => "")}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    // SSE 이벤트는 \n\n 으로 구분.
+    const parts = buf.split("\n\n");
+    buf = parts.pop() ?? "";
+    for (const part of parts) {
+      const m = part.match(/^data:\s*(.*)$/m);
+      if (!m) continue;
+      try {
+        yield JSON.parse(m[1]) as T;
+      } catch {
+        // 라인이 깨졌으면 무시
+      }
+    }
+  }
+}
+
 export const api = {
   // restaurants
   listRestaurants: (params: Record<string, string | number | undefined>) => {
@@ -60,6 +99,10 @@ export const api = {
   // votes
   vote: (body: VoteBody) =>
     request<{ ok: boolean }>(`/votes`, { method: "POST", body: JSON.stringify(body) }, true),
+
+  // admin — channel auto-ingest (SSE)
+  ingestChannel: (handle: string, max_videos: number) =>
+    streamSSE<IngestEvent>(`/admin/ingest-channel`, { handle, max_videos }),
 
   // users (superadmin)
   listUsers: (q: string, page: number, pageSize = 20) => {
@@ -190,3 +233,15 @@ export type UserUpdateBody = {
   is_blocked?: boolean;
   nickname?: string;
 };
+
+/** 채널 자동 수집 SSE 이벤트 — backend ingest_channel_stream 의 dict 그대로. */
+export type IngestEvent =
+  | { stage: "channel"; channel: { id: number; name: string; youtube_id: string } }
+  | { stage: "videos_fetched"; count: number }
+  | { stage: "video_start"; i: number; n: number; video_id: string; title: string }
+  | { stage: "video_extracted"; i: number; found: string[] }
+  | { stage: "restaurant_saved"; video_id: string; restaurant: { id: number; name: string; address: string } }
+  | { stage: "restaurant_skipped"; video_id: string; name: string; reason: string }
+  | { stage: "video_done"; i: number; skip?: string }
+  | { stage: "done"; summary: { videos: number; saved: number; skipped: number } }
+  | { stage: "error"; message: string };
