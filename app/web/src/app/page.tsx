@@ -133,6 +133,19 @@ export default function HomePage() {
     api.listRestaurants(params).then(setRows).catch(() => setRows([]));
   }
 
+  // 필터에 따라 지도 중심 이동 — 필터가 있으면 결과 평균 좌표로, 없으면 default(서울시청)
+  const mapCenter = useMemo(() => {
+    if (!sido && !sigungu && !dong) return undefined;
+    const valid = rows.filter((r) => r.lat != null && r.lng != null);
+    if (valid.length === 0) return undefined;
+    const lat = valid.reduce((s, r) => s + (r.lat as number), 0) / valid.length;
+    const lng = valid.reduce((s, r) => s + (r.lng as number), 0) / valid.length;
+    return { lat, lng };
+  }, [rows, sido, sigungu, dong]);
+
+  // 줌 레벨 — 좁은 필터일수록 더 확대
+  const mapLevel = dong ? 3 : sigungu ? 5 : sido ? 8 : undefined;
+
   // 카카오톡 공유 — 현재 페이지 URL 그대로(필터 포함) + 필터 요약
   async function shareCurrent() {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -284,7 +297,7 @@ export default function HomePage() {
       {/* 결과 영역 — 검색 필터와 상관없이 세 가지 보기 모두 전체 데이터 표시 */}
       {view === "map" ? (
         <div className="h-[68vh] overflow-hidden rounded-xl border border-neutral-200">
-          <Map restaurants={rows} />
+          <Map restaurants={rows} center={mapCenter} level={mapLevel} />
         </div>
       ) : view === "list" ? (
         <RestaurantList rows={rows} />

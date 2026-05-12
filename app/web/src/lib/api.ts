@@ -71,6 +71,11 @@ export const api = {
   listRegions: () => request<Region[]>(`/restaurants/regions`),
   topAppearance: (rid: number) => request<Appearance | null>(`/restaurants/${rid}/top-appearance`),
   topAppearances: (rid: number) => request<Appearance[]>(`/restaurants/${rid}/top-appearances`),
+  topAppearancesBatch: (ids: number[]) =>
+    request<Record<string, Appearance>>(`/restaurants/top-appearances-batch`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
   externalInfo: (rid: number) => request<ExternalInfo>(`/restaurants/${rid}/external-info`),
   createRestaurant: (body: unknown) =>
     request<{ id: number }>(`/restaurants`, { method: "POST", body: JSON.stringify(body) }, true),

@@ -23,6 +23,7 @@ function ytThumbUrl(id: string | null, size: "default" | "mqdefault" | "hqdefaul
 type Props = {
   restaurants: Restaurant[];
   center?: { lat: number; lng: number };
+  level?: number;
 };
 
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // 서울특별시청
@@ -31,7 +32,7 @@ const DEFAULT_LEVEL = 4;
 
 // 함수 이름을 'Map' 으로 두면 본문 내 `new Map()` 이 글로벌 Map 대신 자기 자신을 가리킨다.
 // 이 충돌을 피하기 위해 함수 이름은 RestaurantMap, default export 는 그대로 유지.
-export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: Props) {
+export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, level = DEFAULT_LEVEL }: Props) {
   const appkey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY ?? "";
   const [loading, error] = useKakaoLoader({ appkey, libraries: ["services"] });
 
@@ -49,20 +50,23 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: 
       setRestaurantRep(new Map());
       return;
     }
-    // 너무 많으면 부담 — 100개로 제한
-    const limited = ids.slice(0, 100);
-    Promise.all(limited.map((id) => api.topAppearance(id).catch(() => null))).then((apps) => {
-      const m = new Map<number, RepInfo>();
-      apps.forEach((a) => {
-        if (a) {
-          m.set(a.restaurant_id, {
+    let cancelled = false;
+    // batch 엔드포인트 — N개 식당의 대표 appearance(채널 정보 포함) 를 1번 호출로 받기.
+    // 과거 N번 병렬 호출 방식은 일부 실패로 핀 썸네일 누락 발생.
+    api.topAppearancesBatch(ids.slice(0, 500))
+      .then((map) => {
+        if (cancelled) return;
+        const m = new Map<number, RepInfo>();
+        Object.entries(map).forEach(([rid, a]) => {
+          m.set(Number(rid), {
             channelName: a.channels?.name ?? "",
             channelThumb: a.channels?.thumbnail_url ?? null,
           });
-        }
-      });
-      setRestaurantRep(m);
-    });
+        });
+        setRestaurantRep(m);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [restaurants]);
 
   function handlePinClick(r: Restaurant) {
@@ -83,7 +87,7 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER }: 
 
   return (
     <div className="relative h-full w-full">
-      <KakaoMap center={center} level={DEFAULT_LEVEL} style={{ width: "100%", height: "100%" }}>
+      <KakaoMap center={center} level={level} style={{ width: "100%", height: "100%" }}>
         {pinnable.map((r) => {
           const rep = restaurantRep.get(r.id);
           const thumb = rep?.channelThumb ?? null;

@@ -102,6 +102,37 @@ def get_restaurant(restaurant_id: int) -> dict | None:
     return row.data
 
 
+class IdsBody(BaseModel):
+    ids: list[int]
+
+
+@router.post("/top-appearances-batch")
+def top_appearances_batch(body: IdsBody) -> dict:
+    """여러 restaurant_id 에 대한 대표 appearance(rn=1) 를 한 번에 반환. 지도 핀 썸네일용.
+
+    응답: { "<restaurant_id>": <appearance with channels join> }
+    """
+    if not body.ids:
+        return {}
+    sb = get_anon_client()
+    tops = exec_with_retry(
+        sb.table("v_top2_appearances").select("*").in_("restaurant_id", body.ids).eq("rn", 1)
+    ).data or []
+    if not tops:
+        return {}
+    app_ids = [t["appearance_id"] for t in tops]
+    apps = exec_with_retry(
+        sb.table("appearances").select("*, channels(*)").in_("id", app_ids)
+    ).data or []
+    by_id = {a["id"]: a for a in apps}
+    out: dict[str, dict] = {}
+    for t in tops:
+        a = by_id.get(t["appearance_id"])
+        if a:
+            out[str(t["restaurant_id"])] = a
+    return out
+
+
 @router.get("/{restaurant_id}/top-appearance")
 def top_appearance(restaurant_id: int) -> dict | None:
     """대표 회차(좋아요 최다) 1건 — 핀 호버 미리보기용. (구버전 호환)"""
