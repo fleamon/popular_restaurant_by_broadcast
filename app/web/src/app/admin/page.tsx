@@ -483,11 +483,28 @@ function ChannelIngest({ onChanged }: { onChanged: () => void }) {
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<IngestEvent[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [prefilled, setPrefilled] = useState(false);
 
   // 줄바꿈/쉼표 구분, 공백 제거, dedupe.
   const handles = Array.from(new Set(
     handlesText.split(/[\n,]/).map((s) => s.trim()).filter(Boolean),
   ));
+
+  // 최초 마운트 시 — 기존 채널 목록의 wiki_url 에서 @handle 을 뽑아 textarea 에 채움.
+  // 한 번만 자동 채움 → 이후 사용자가 편집하면 그대로 보존.
+  useEffect(() => {
+    if (prefilled) return;
+    api.listChannels().then((channels) => {
+      const handles = channels
+        .map((c) => {
+          const m = (c.wiki_url ?? "").match(/\/@([^/?#\s]+)/);
+          return m ? `@${m[1]}` : null;
+        })
+        .filter((h): h is string => h !== null);
+      setHandlesText(handles.join("\n"));
+      setPrefilled(true);
+    }).catch(() => setPrefilled(true));
+  }, [prefilled]);
 
   async function run() {
     if (handles.length === 0 || running) return;
@@ -523,7 +540,7 @@ function ChannelIngest({ onChanged }: { onChanged: () => void }) {
     <section className="space-y-3">
       <h2 className="font-soft text-2xl font-bold" style={{ color: "rgb(20 30 80)" }}>채널 자동 수집</h2>
       <p className="text-xs font-bold" style={{ color: "rgb(110 120 140)" }}>
-        YouTube 채널 핸들을 <b>한 줄에 하나씩</b>(또는 쉼표 구분) 입력하면 순서대로 처리합니다.
+        DB 에 등록된 채널의 <code className="font-mono">@handle</code> 이 자동으로 채워집니다. 한 줄에 하나씩 입력하면 순서대로 처리됩니다.
         영상 설명에서 가게를 자동 추출 → 카카오 보강 → 맛집·채널·영상 DB 저장. 영상당 ~5초 소요.
       </p>
 
