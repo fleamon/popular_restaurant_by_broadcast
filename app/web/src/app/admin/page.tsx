@@ -563,9 +563,9 @@ function ChannelIngest({ onChanged }: { onChanged: () => void }) {
           <input
             type="number"
             min={1}
-            max={100}
+            max={1000}
             value={maxVideos}
-            onChange={(e) => setMaxVideos(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+            onChange={(e) => setMaxVideos(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))}
             disabled={running}
             className="w-[110px] rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none"
           />

@@ -68,6 +68,7 @@ export const api = {
     return request<Restaurant[]>(`/restaurants?${qs}`);
   },
   topRestaurants: (limit = 10) => request<Restaurant[]>(`/restaurants/top?limit=${limit}`),
+  listRegions: () => request<Region[]>(`/restaurants/regions`),
   topAppearance: (rid: number) => request<Appearance | null>(`/restaurants/${rid}/top-appearance`),
   topAppearances: (rid: number) => request<Appearance[]>(`/restaurants/${rid}/top-appearances`),
   externalInfo: (rid: number) => request<ExternalInfo>(`/restaurants/${rid}/external-info`),
@@ -190,6 +191,8 @@ export type AppearanceScore = {
 };
 
 export type RankingRow = { id: number; name: string; likes: number; dislikes: number; net_score: number };
+
+export type Region = { sido: string; sigungu: string | null; dong: string | null };
 
 export type ExternalInfo = {
   place_id: string | null;

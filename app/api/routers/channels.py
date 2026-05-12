@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_superadmin
-from ..services.supabase_client import get_anon_client, get_service_client
+from ..services.supabase_client import exec_with_retry, get_anon_client, get_service_client
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
@@ -19,13 +19,15 @@ def list_channels(channel_type: str | None = Query(default=None)) -> list[dict]:
     q = sb.table("channels").select("*").order("name")
     if channel_type:
         q = q.eq("channel_type", channel_type)
-    return q.execute().data or []
+    return exec_with_retry(q).data or []
 
 
 @router.get("/ranking")
 def channel_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
     sb = get_anon_client()
-    rows = sb.table("v_channel_score").select("*").order("net_score", desc=True).limit(limit).execute().data or []
+    rows = exec_with_retry(
+        sb.table("v_channel_score").select("*").order("net_score", desc=True).limit(limit)
+    ).data or []
     return [{**r, "id": r["channel_id"]} for r in rows]
 
 
@@ -33,7 +35,9 @@ def channel_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
 def appearance_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
     """영상 좋아요 랭킹 — vote 탭 '영상 랭킹' 용."""
     sb = get_anon_client()
-    rows = sb.table("v_appearance_score").select("*").order("net_score", desc=True).limit(limit).execute().data or []
+    rows = exec_with_retry(
+        sb.table("v_appearance_score").select("*").order("net_score", desc=True).limit(limit)
+    ).data or []
     return [{**r, "id": r["appearance_id"]} for r in rows]
 
 
@@ -41,7 +45,9 @@ def appearance_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
 def trending_appearances(limit: int = Query(default=20, le=100)) -> list[dict]:
     """인기 급상승 영상 — 최근 7일 좋아요에 가중치 적용."""
     sb = get_anon_client()
-    rows = sb.table("v_trending_appearances").select("*").order("trend_score", desc=True).limit(limit).execute().data or []
+    rows = exec_with_retry(
+        sb.table("v_trending_appearances").select("*").order("trend_score", desc=True).limit(limit)
+    ).data or []
     return [{**r, "id": r["appearance_id"]} for r in rows]
 
 

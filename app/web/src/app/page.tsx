@@ -1,12 +1,14 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import Map from "@/components/Map";
 import RestaurantGrid from "@/components/RestaurantGrid";
 import RestaurantList from "@/components/RestaurantList";
 import ViewToggle, { type SearchView } from "@/components/ViewToggle";
-import { api, type Channel, type Restaurant } from "@/lib/api";
+import { api, type Channel, type Region, type Restaurant } from "@/lib/api";
+import { shareKakaoTalk } from "@/lib/kakao-share";
 
 const COUNT_COLOR = "rgb(90 97 106)";
 
@@ -18,13 +20,6 @@ const CHANNEL_TYPES: { value: "tv" | "youtube" | "blog" | "other"; label: string
   { value: "other",   label: "기타" },
 ];
 
-const SIDOS = [
-  "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시",
-  "대전광역시", "울산광역시", "세종특별자치시", "경기도",
-  "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도",
-  "경상북도", "경상남도", "제주특별자치도",
-];
-
 const CUISINES = [
   "한식", "양식", "일식", "중식", "분식", "카페",
   "베이커리", "디저트", "아시안", "패스트푸드",
@@ -34,20 +29,27 @@ const SELECT_CLS =
   "rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold text-black focus:border-brand focus:outline-none";
 
 export default function HomePage() {
-  // 필터 상태
-  const [channelType, setChannelType] = useState<string>("");
-  const [channelId, setChannelId] = useState<number | "">("");
-  const [sido, setSido] = useState<string>("");
-  const [cuisine, setCuisine] = useState<string>("");
-  const [q, setQ] = useState<string>("");
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  // 필터 상태 — 초기값은 URL 쿼리스트링에서 (공유 링크 복원)
+  const [channelType, setChannelType] = useState<string>(sp.get("ct") ?? "");
+  const [channelId, setChannelId] = useState<number | "">(sp.get("cid") ? Number(sp.get("cid")) : "");
+  const [sido, setSido] = useState<string>(sp.get("sido") ?? "");
+  const [sigungu, setSigungu] = useState<string>(sp.get("sigungu") ?? "");
+  const [dong, setDong] = useState<string>(sp.get("dong") ?? "");
+  const [cuisine, setCuisine] = useState<string>(sp.get("cuisine") ?? "");
+  const [q, setQ] = useState<string>(sp.get("q") ?? "");
 
   // 데이터
   const [allChannels, setAllChannels] = useState<Channel[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
   const [rows, setRows] = useState<Restaurant[]>([]);
   const [view, setView] = useState<SearchView>("map");
 
   useEffect(() => {
     api.listChannels().then(setAllChannels).catch(() => setAllChannels([]));
+    api.listRegions().then(setRegions).catch(() => setRegions([]));
   }, []);
 
   // 채널 타입 → 채널명 cascading
@@ -63,18 +65,41 @@ export default function HomePage() {
     }
   }, [filteredChannels, channelId]);
 
+  // 시도/시군구/동 cascading 옵션 — regions 에서 동적 산출
+  const sidoOptions = useMemo(
+    () => Array.from(new Set(regions.map((r) => r.sido))).sort(),
+    [regions],
+  );
+  const sigunguOptions = useMemo(() => {
+    if (!sido) return [];
+    return Array.from(new Set(
+      regions.filter((r) => r.sido === sido && r.sigungu).map((r) => r.sigungu as string),
+    )).sort();
+  }, [regions, sido]);
+  const dongOptions = useMemo(() => {
+    if (!sido || !sigungu) return [];
+    return Array.from(new Set(
+      regions.filter((r) => r.sido === sido && r.sigungu === sigungu && r.dong).map((r) => r.dong as string),
+    )).sort();
+  }, [regions, sido, sigungu]);
+
+  // 상위 변경 시 하위 초기화. 단, 첫 마운트 시 URL 에서 받은 값은 보존하도록
+  // 사용자 입력이 발생한 후에만 리셋 (sido/sigungu 변경 핸들러에서 직접 처리).
+
   // 어떤 필터든 하나라도 설정되어야 결과 조회
-  const hasAnyFilter = !!(channelType || channelId || sido || cuisine || q);
+  const hasAnyFilter = !!(channelType || channelId || sido || sigungu || dong || cuisine || q);
 
   const params = useMemo(
     () => ({
       channel_id:   channelId === "" ? undefined : channelId,
       channel_type: channelId === "" && channelType ? channelType : undefined, // 채널명 선택 시 타입은 무시(이미 한정됨)
       sido,
+      sigungu,
+      dong,
       cuisine,
       q,
     }),
-    [channelType, channelId, sido, cuisine, q],
+    [channelType, channelId, sido, sigungu, dong, cuisine, q],
   );
 
   useEffect(() => {
@@ -89,9 +114,44 @@ export default function HomePage() {
     return () => clearTimeout(t);
   }, [params, hasAnyFilter]);
 
+  // 필터 → URL 쿼리스트링 동기화 (공유 가능)
+  useEffect(() => {
+    const qs = new URLSearchParams();
+    if (channelType) qs.set("ct", channelType);
+    if (channelId !== "") qs.set("cid", String(channelId));
+    if (sido) qs.set("sido", sido);
+    if (sigungu) qs.set("sigungu", sigungu);
+    if (dong) qs.set("dong", dong);
+    if (cuisine) qs.set("cuisine", cuisine);
+    if (q) qs.set("q", q);
+    const s = qs.toString();
+    router.replace(s ? `/?${s}` : "/", { scroll: false });
+  }, [channelType, channelId, sido, sigungu, dong, cuisine, q, router]);
+
   function triggerSearch() {
     if (!hasAnyFilter) return;
     api.listRestaurants(params).then(setRows).catch(() => setRows([]));
+  }
+
+  // 카카오톡 공유 — 현재 페이지 URL 그대로(필터 포함) + 필터 요약
+  async function shareCurrent() {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    const channelName = channelId !== "" ? allChannels.find((c) => c.id === channelId)?.name : null;
+    const locationBits = [sido, sigungu, dong].filter(Boolean).join(" ");
+    const filterBits = [
+      locationBits,
+      channelName,
+      cuisine,
+      q ? `"${q}"` : null,
+    ].filter(Boolean).join(" · ");
+    const title = filterBits ? `${filterBits} 맛집` : "백안맛지도 — 방송 맛집 지도";
+    const description = `${rows.length}개의 맛집 결과 — 백안맛지도에서 확인하기`;
+    const imageUrl = `${window.location.origin}/white_eyes_blue.png`;
+    const ok = await shareKakaoTalk({ title, description, imageUrl, url });
+    if (!ok) {
+      try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+      alert("카카오 공유를 사용할 수 없어 링크를 복사했습니다.\n(Kakao Developers '플랫폼 → Web' 도메인 등록 확인)");
+    }
   }
 
   return (
@@ -104,12 +164,20 @@ export default function HomePage() {
             결과 {rows.length} 개
           </span>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={shareCurrent}
+            title="현재 필터 결과를 카카오톡으로 공유"
+            className="rounded-md bg-[#FEE500] px-3 py-2 text-sm font-bold text-black hover:opacity-90"
+          >
+            💬 카카오 공유
+          </button>
           <ViewToggle value={view} onChange={setView} />
         </div>
       </div>
 
-      {/* 필터 라인 — 5개 + 검색버튼 */}
+      {/* 필터 라인 — 채널타입/채널명/시도/시군구/동/카테고리/이름검색 + 검색버튼 */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <select value={channelType} onChange={(e) => setChannelType(e.target.value)} className={SELECT_CLS}>
           <option value="">채널 타입</option>
@@ -129,10 +197,41 @@ export default function HomePage() {
           ))}
         </select>
 
-        <select value={sido} onChange={(e) => setSido(e.target.value)} className={SELECT_CLS}>
-          <option value="">지역별</option>
-          {SIDOS.map((s) => (
+        {/* 시/도 — 상위 변경 시 하위 시군구/동 초기화 */}
+        <select
+          value={sido}
+          onChange={(e) => { setSido(e.target.value); setSigungu(""); setDong(""); }}
+          className={SELECT_CLS}
+        >
+          <option value="">시도별</option>
+          {sidoOptions.map((s) => (
             <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
+        {/* 시/군/구 — sido 가 있을 때만 활성 */}
+        <select
+          value={sigungu}
+          onChange={(e) => { setSigungu(e.target.value); setDong(""); }}
+          disabled={!sido}
+          className={SELECT_CLS}
+        >
+          <option value="">시/군/구</option>
+          {sigunguOptions.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
+        {/* 동/읍/면 — sigungu 가 있을 때만 활성 */}
+        <select
+          value={dong}
+          onChange={(e) => setDong(e.target.value)}
+          disabled={!sigungu}
+          className={SELECT_CLS}
+        >
+          <option value="">동/읍/면</option>
+          {dongOptions.map((d) => (
+            <option key={d} value={d}>{d}</option>
           ))}
         </select>
 

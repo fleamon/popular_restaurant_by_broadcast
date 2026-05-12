@@ -32,8 +32,8 @@ class IngestBody(BaseModel):
 @router.post("/ingest-channel")
 def ingest_channel(body: IngestBody, user: dict = Depends(require_superadmin)) -> StreamingResponse:
     """채널 핸들 → YouTube → OpenAI 추출 → Kakao 보강 → DB 저장. SSE 스트림으로 진행 상황 전송."""
-    if body.max_videos < 1 or body.max_videos > 100:
-        raise HTTPException(status_code=400, detail="max_videos 는 1~100 사이")
+    if body.max_videos < 1 or body.max_videos > 1000:
+        raise HTTPException(status_code=400, detail="max_videos 는 1~1000 사이")
 
     def event_stream():
         for event in ingest_channel_stream(body.handle, body.max_videos, user["sequence"]):

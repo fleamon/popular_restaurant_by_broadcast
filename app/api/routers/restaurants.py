@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_admin
-from ..services.supabase_client import get_anon_client, get_service_client
+from ..services.supabase_client import exec_with_retry, get_anon_client, get_service_client
 
 
 def _norm_channel(name: str) -> str:
@@ -36,22 +36,51 @@ def list_restaurants(
     if dong:    query = query.eq("dong", dong)
     if cuisine: query = query.eq("cuisine", cuisine)
     if q:       query = query.ilike("current_name", f"%{q}%")
-    rows = query.execute().data or []
+    rows = exec_with_retry(query).data or []
 
     if channel_id:
-        app_rows = sb.table("appearances").select("restaurant_id").eq("channel_id", channel_id).execute().data or []
+        app_rows = exec_with_retry(
+            sb.table("appearances").select("restaurant_id").eq("channel_id", channel_id)
+        ).data or []
         allowed = {r["restaurant_id"] for r in app_rows}
         rows = [r for r in rows if r["id"] in allowed]
     elif channel_type:
-        ch_rows = sb.table("channels").select("id").eq("channel_type", channel_type).execute().data or []
+        ch_rows = exec_with_retry(
+            sb.table("channels").select("id").eq("channel_type", channel_type)
+        ).data or []
         if not ch_rows:
             return []
         ch_ids = [c["id"] for c in ch_rows]
-        app_rows = sb.table("appearances").select("restaurant_id").in_("channel_id", ch_ids).execute().data or []
+        app_rows = exec_with_retry(
+            sb.table("appearances").select("restaurant_id").in_("channel_id", ch_ids)
+        ).data or []
         allowed = {r["restaurant_id"] for r in app_rows}
         rows = [r for r in rows if r["id"] in allowed]
 
     return rows
+
+
+@router.get("/regions")
+def list_regions() -> list[dict]:
+    """restaurants 의 distinct (sido, sigungu, dong) 트리플. cascading select 용.
+
+    sido 가 null 인 행은 제외. sigungu/dong 은 null 일 수 있음.
+    """
+    sb = get_anon_client()
+    rows = exec_with_retry(
+        sb.table("restaurants").select("sido, sigungu, dong")
+    ).data or []
+    seen: set[tuple[str | None, str | None, str | None]] = set()
+    out: list[dict] = []
+    for r in rows:
+        if not r.get("sido"):
+            continue
+        key = (r.get("sido"), r.get("sigungu"), r.get("dong"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"sido": r["sido"], "sigungu": r.get("sigungu"), "dong": r.get("dong")})
+    return out
 
 
 @router.get("/top")

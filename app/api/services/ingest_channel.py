@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from . import kakao_geo, openai_extract, youtube_api
-from .supabase_client import get_service_client
+from .supabase_client import exec_with_retry, get_service_client
 
 
 def _norm(s: str) -> str:
@@ -40,7 +40,7 @@ def _upsert_channel(meta: youtube_api.ChannelMeta) -> dict:
     매칭된 행은 user 의 표시 이름(name)을 보존하고 wiki_url 은 @handle 형태로 표준화.
     """
     sb = get_service_client()
-    rows = sb.table("channels").select("*").execute().data or []
+    rows = exec_with_retry(sb.table("channels").select("*")).data or []
 
     incoming_ids = {meta.channel_id}
     if meta.handle:
@@ -73,23 +73,25 @@ def _upsert_channel(meta: youtube_api.ChannelMeta) -> dict:
         if existing.get("channel_type") != "youtube":
             patch["channel_type"] = "youtube"
         if patch:
-            sb.table("channels").update(patch).eq("id", existing["id"]).execute()
+            exec_with_retry(sb.table("channels").update(patch).eq("id", existing["id"]))
         return {**existing, **patch}
 
-    created = sb.table("channels").insert({
+    created = exec_with_retry(sb.table("channels").insert({
         "name": meta.title,
         "channel_type": "youtube",
         "wiki_url": canonical_url,
         "thumbnail_url": meta.thumbnail_url,
-    }).execute()
+    }))
     return created.data[0]
 
 
 def _appearance_exists(channel_id: int, video_id: str) -> bool:
     sb = get_service_client()
-    rows = sb.table("appearances").select("id") \
-        .eq("channel_id", channel_id).eq("youtube_video_id", video_id) \
-        .limit(1).execute().data or []
+    rows = exec_with_retry(
+        sb.table("appearances").select("id")
+          .eq("channel_id", channel_id).eq("youtube_video_id", video_id)
+          .limit(1)
+    ).data or []
     return bool(rows)
 
 
@@ -116,13 +118,15 @@ def _upsert_restaurant(*, name: str, address: str, road_address: str | None,
         "created_by": created_by,
     }
     payload = {k: v for k, v in payload.items() if v is not None}
-    res = sb.table("restaurants").upsert(payload, on_conflict="current_name,current_address").execute()
+    res = exec_with_retry(
+        sb.table("restaurants").upsert(payload, on_conflict="current_name,current_address")
+    )
     return res.data[0]
 
 
 def _insert_appearance(restaurant_id: int, channel_id: int, video: youtube_api.VideoMeta) -> dict:
     sb = get_service_client()
-    res = sb.table("appearances").insert({
+    res = exec_with_retry(sb.table("appearances").insert({
         "restaurant_id": restaurant_id,
         "channel_id": channel_id,
         "episode_title": video.title,
@@ -130,7 +134,7 @@ def _insert_appearance(restaurant_id: int, channel_id: int, video: youtube_api.V
         "youtube_video_id": video.video_id,
         "thumbnail_url": video.thumbnail_url,
         "aired_at": (video.published_at or "")[:10] or None,
-    }).execute()
+    }))
     return res.data[0] if res.data else {}
 
 
