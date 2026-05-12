@@ -26,7 +26,8 @@ type Props = {
 };
 
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // 서울특별시청
-const DEFAULT_LEVEL = 8;
+// 카카오 지도 level — 작을수록 확대. 8(과거) → 5 (3단계 확대).
+const DEFAULT_LEVEL = 4;
 
 // 함수 이름을 'Map' 으로 두면 본문 내 `new Map()` 이 글로벌 Map 대신 자기 자신을 가리킨다.
 // 이 충돌을 피하기 위해 함수 이름은 RestaurantMap, default export 는 그대로 유지.
