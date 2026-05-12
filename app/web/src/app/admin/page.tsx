@@ -53,7 +53,7 @@ function UserManagement({ onChannelsChanged }: { onChannelsChanged: () => void }
   const [rows, setRows] = useState<MeResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [savedModal, setSavedModal] = useState<SaveResult | null>(null);
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 5;
 
   function reload() {
     api.listUsers(q, page, PAGE_SIZE)
@@ -293,6 +293,9 @@ function ChannelManagement({
   const [rows, setRows] = useState<Channel[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 5;
 
   function reload() {
     api.listChannels().then(setRows).catch(() => setRows([]));
@@ -301,6 +304,19 @@ function ChannelManagement({
   useEffect(() => {
     reload();
   }, [channelsRevision]);
+
+  // 검색어 변경 시 1페이지로 — 빈 페이지 표시 방지
+  useEffect(() => { setPage(1); }, [q]);
+
+  // 채널명 like 필터 (클라이언트측 — 채널 수가 많지 않은 도메인)
+  const filtered = useMemo(() => {
+    if (!q.trim()) return rows;
+    const needle = q.trim().toLowerCase();
+    return rows.filter((r) => (r.name ?? "").toLowerCase().includes(needle));
+  }, [rows, q]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   async function save(id: number, body: ChannelUpdateBody) {
     setBusyId(id);
@@ -338,6 +354,12 @@ function ChannelManagement({
       <p className="text-xs font-bold" style={{ color: "rgb(110 120 140)" }}>
         YouTube 채널 URL(예: https://www.youtube.com/@sungsikyung) 을 저장한 뒤 <b>🔄 자동 가져오기</b> 를 누르면 채널 아바타가 썸네일에 들어갑니다. 직접 이미지 URL 을 붙여넣어도 됩니다.
       </p>
+      <input
+        placeholder="채널 이름 검색"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        className="w-full max-w-sm rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold text-black focus:border-brand focus:outline-none"
+      />
 
       <div className="overflow-auto rounded-lg border border-neutral-200">
         <table className="min-w-full divide-y divide-neutral-200 text-sm">
@@ -352,7 +374,7 @@ function ChannelManagement({
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
-            {rows.map((c) => (
+            {visible.map((c) => (
               <ChannelRow
                 key={c.id}
                 channel={c}
@@ -361,11 +383,33 @@ function ChannelManagement({
                 onFetch={autoFetch}
               />
             ))}
-            {rows.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: "rgb(150 160 180)" }}>채널이 없습니다</td></tr>
+            {visible.length === 0 && (
+              <tr><td colSpan={7} className="px-3 py-6 text-center" style={{ color: "rgb(150 160 180)" }}>결과 없음</td></tr>
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="flex items-center gap-3 text-sm">
+        <button
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
+          style={{ color: "rgb(20 30 80)" }}
+        >
+          ◀ 이전
+        </button>
+        <span className="font-bold" style={{ color: "rgb(20 30 80)" }}>
+          {page} / {totalPages} <span style={{ color: "rgb(110 120 140)" }}>(총 {filtered.length})</span>
+        </span>
+        <button
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={page >= totalPages}
+          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
+          style={{ color: "rgb(20 30 80)" }}
+        >
+          다음 ▶
+        </button>
       </div>
 
       {msg && (
