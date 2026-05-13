@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from . import kakao_geo, openai_extract, youtube_api
+from . import kakao_geo, naver_match, openai_extract, youtube_api
 from .supabase_client import exec_with_retry, get_service_client
 
 
@@ -103,7 +103,7 @@ def _upsert_restaurant(*, name: str, address: str, road_address: str | None,
                       kakao_place_id: str | None,
                       created_by: int) -> dict:
     sb = get_service_client()
-    payload = {
+    payload: dict = {
         "current_name": name,
         "current_address": road_address or address,
         "cuisine": cuisine,
@@ -117,6 +117,16 @@ def _upsert_restaurant(*, name: str, address: str, road_address: str | None,
         "kakao_place_id": kakao_place_id,
         "created_by": created_by,
     }
+
+    # 네이버 place 매칭 — 카카오 좌표 기준 300m 내 검증. 실패해도 ingest 자체는 계속.
+    try:
+        nm = naver_match.match(name, road_address or address, lat, lng, sleep_between=0.2)
+        if nm:
+            payload["naver_place_id"] = nm.place_id
+            payload["naver_map_url"] = naver_match.naver_place_url(nm.place_id)
+    except Exception:
+        pass
+
     payload = {k: v for k, v in payload.items() if v is not None}
     res = exec_with_retry(
         sb.table("restaurants").upsert(payload, on_conflict="current_name,current_address")
