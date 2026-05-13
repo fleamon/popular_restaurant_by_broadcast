@@ -60,6 +60,55 @@ def list_restaurants(
     return rows
 
 
+@router.get("/count")
+def restaurants_count(
+    sido: str | None = Query(default=None),
+    sigungu: str | None = Query(default=None),
+    dong: str | None = Query(default=None),
+    cuisine: str | None = Query(default=None),
+    channel_id: int | None = Query(default=None),
+    channel_type: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+) -> dict:
+    """list_restaurants 와 동일 필터 적용 후 총개수만 반환 (limit 무관)."""
+    sb = get_anon_client()
+
+    allowed_ids: set[int] | None = None
+    if channel_id:
+        app_rows = exec_with_retry(
+            sb.table("appearances").select("restaurant_id").eq("channel_id", channel_id)
+        ).data or []
+        allowed_ids = {r["restaurant_id"] for r in app_rows}
+        if not allowed_ids:
+            return {"count": 0}
+    elif channel_type:
+        ch_rows = exec_with_retry(
+            sb.table("channels").select("id").eq("channel_type", channel_type)
+        ).data or []
+        if not ch_rows:
+            return {"count": 0}
+        ch_ids = [c["id"] for c in ch_rows]
+        app_rows = exec_with_retry(
+            sb.table("appearances").select("restaurant_id").in_("channel_id", ch_ids)
+        ).data or []
+        allowed_ids = {r["restaurant_id"] for r in app_rows}
+        if not allowed_ids:
+            return {"count": 0}
+
+    # Postgrest count="exact" 사용 — limit(1) 로 데이터는 안 받고 count 만 헤더로
+    query = sb.table("restaurants").select("id", count="exact").limit(1)
+    if sido:    query = query.eq("sido", sido)
+    if sigungu: query = query.eq("sigungu", sigungu)
+    if dong:    query = query.eq("dong", dong)
+    if cuisine: query = query.eq("cuisine", cuisine)
+    if q:       query = query.ilike("current_name", f"%{q}%")
+    if allowed_ids is not None:
+        # Postgrest in_() 의 IN 절 길이 한계 회피용 청크 처리는 5000 이하면 한 번에 가능
+        query = query.in_("id", list(allowed_ids))
+    res = exec_with_retry(query)
+    return {"count": res.count or 0}
+
+
 @router.get("/regions")
 def list_regions() -> list[dict]:
     """restaurants 의 distinct (sido, sigungu, dong) 트리플. cascading select 용.

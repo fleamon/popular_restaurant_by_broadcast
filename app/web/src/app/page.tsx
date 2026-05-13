@@ -45,7 +45,20 @@ export default function HomePage() {
   const [allChannels, setAllChannels] = useState<Channel[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [rows, setRows] = useState<Restaurant[]>([]);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [view, setView] = useState<SearchView>("map");
+
+  // sp 가 외부 네비게이션(홈/검색 탭 클릭 → '/' 이동)으로 변하면 state 도 동기화.
+  // 같은 값이면 setState 가 noop 이라 무한루프 없음.
+  useEffect(() => {
+    setChannelType(sp.get("ct") ?? "");
+    setChannelId(sp.get("cid") ? Number(sp.get("cid")) : "");
+    setSido(sp.get("sido") ?? "");
+    setSigungu(sp.get("sigungu") ?? "");
+    setDong(sp.get("dong") ?? "");
+    setCuisine(sp.get("cuisine") ?? "");
+    setQ(sp.get("q") ?? "");
+  }, [sp]);
 
   useEffect(() => {
     api.listChannels().then(setAllChannels).catch(() => setAllChannels([]));
@@ -104,12 +117,15 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!hasAnyFilter) {
-      // 검색 조건이 없을 때: 전체 레스토랑을 로드해 지도에 핀으로 표시.
+      // 검색 조건이 없을 때: 전체 레스토랑을 로드해 지도에 핀으로 표시 (지도 핀은 1000개로 cap).
       api.listRestaurants({ limit: 1000 }).then(setRows).catch(() => setRows([]));
+      // 총개수는 별도 호출 — limit 무관
+      api.countRestaurants({}).then((r) => setTotalCount(r.count)).catch(() => setTotalCount(null));
       return;
     }
     const t = setTimeout(() => {
       api.listRestaurants(params).then(setRows).catch(() => setRows([]));
+      api.countRestaurants(params).then((r) => setTotalCount(r.count)).catch(() => setTotalCount(null));
     }, 200);
     return () => clearTimeout(t);
   }, [params, hasAnyFilter]);
@@ -174,7 +190,7 @@ export default function HomePage() {
         <div className="flex items-baseline gap-4">
           <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">맛집 검색</h1>
           <span className="font-soft text-base font-bold tracking-tight" style={{ color: COUNT_COLOR }}>
-            결과 {rows.length} 개
+            결과 {totalCount ?? rows.length} 개
           </span>
         </div>
         <div className="ml-auto flex items-center gap-2">

@@ -45,27 +45,33 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
   const [restaurantRep, setRestaurantRep] = useState<Map<number, RepInfo>>(new Map());
 
   useEffect(() => {
-    const ids = restaurants.map((r) => r.id);
+    // 지도에 실제로 표시될 핀(좌표 있는 것)만 대상 — 누락 없게 끝까지 처리.
+    const ids = restaurants.filter((r) => r.lat != null && r.lng != null).map((r) => r.id);
     if (ids.length === 0) {
       setRestaurantRep(new Map());
       return;
     }
     let cancelled = false;
-    // batch 엔드포인트 — N개 식당의 대표 appearance(채널 정보 포함) 를 1번 호출로 받기.
-    // 과거 N번 병렬 호출 방식은 일부 실패로 핀 썸네일 누락 발생.
-    api.topAppearancesBatch(ids.slice(0, 500))
-      .then((map) => {
+    // 1000개 IDs 를 한 번에 IN 절로 보내도 무난하지만,
+    // 안전하게 200 청크씩 병렬 호출 → 결과 누적. 한 청크 실패해도 다른 청크는 살아남음.
+    const CHUNK = 200;
+    const chunks: number[][] = [];
+    for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+
+    Promise.all(chunks.map((c) => api.topAppearancesBatch(c).catch(() => ({}) as Record<string, import("@/lib/api").Appearance>)))
+      .then((results) => {
         if (cancelled) return;
         const m = new Map<number, RepInfo>();
-        Object.entries(map).forEach(([rid, a]) => {
-          m.set(Number(rid), {
-            channelName: a.channels?.name ?? "",
-            channelThumb: a.channels?.thumbnail_url ?? null,
-          });
-        });
+        for (const r of results) {
+          for (const [rid, a] of Object.entries(r)) {
+            m.set(Number(rid), {
+              channelName: a.channels?.name ?? "",
+              channelThumb: a.channels?.thumbnail_url ?? null,
+            });
+          }
+        }
         setRestaurantRep(m);
-      })
-      .catch(() => {});
+      });
     return () => { cancelled = true; };
   }, [restaurants]);
 
@@ -87,7 +93,13 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
 
   return (
     <div className="relative h-full w-full">
-      <KakaoMap center={center} level={level} style={{ width: "100%", height: "100%" }}>
+      <KakaoMap
+        center={center}
+        level={level}
+        style={{ width: "100%", height: "100%" }}
+        // 지도 배경(핀이 아닌 영역) 클릭 시 열린 모달 닫기. 핀 클릭은 CustomOverlay 의 React onClick 이 잡으니 영향 없음.
+        onClick={() => setSelected(null)}
+      >
         {pinnable.map((r) => {
           const rep = restaurantRep.get(r.id);
           const thumb = rep?.channelThumb ?? null;

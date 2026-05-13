@@ -67,6 +67,12 @@ export const api = {
     );
     return request<Restaurant[]>(`/restaurants?${qs}`);
   },
+  countRestaurants: (params: Record<string, string | number | undefined>) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== "") as [string, string][],
+    );
+    return request<{ count: number }>(`/restaurants/count?${qs}`);
+  },
   topRestaurants: (limit = 10) => request<Restaurant[]>(`/restaurants/top?limit=${limit}`),
   listRegions: () => request<Region[]>(`/restaurants/regions`),
   topAppearance: (rid: number) => request<Appearance | null>(`/restaurants/${rid}/top-appearance`),
