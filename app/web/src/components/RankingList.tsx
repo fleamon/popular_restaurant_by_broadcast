@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { RankingRow } from "@/lib/api";
+import Pagination from "./Pagination";
 import VoteButton from "./VoteButton";
 
 type Props = {
@@ -36,8 +37,8 @@ export default function RankingList({ title, rows, targetType, myVotes }: Props)
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-brand">{title}</h2>
-        <span className="text-xs text-neutral-400">총 {sorted.length}</span>
+        <h2 className="font-soft text-xl font-bold tracking-tight text-brand">{title}</h2>
+        <span className="text-xs font-bold text-neutral-400">총 {sorted.length}</span>
       </div>
       <input
         placeholder="이름 검색"
@@ -50,10 +51,15 @@ export default function RankingList({ title, rows, targetType, myVotes }: Props)
           const globalRank = (page - 1) * PAGE_SIZE + i + 1;
           const myVote = myVotes?.[String(r.id)] ?? null;
           return (
-            <li key={r.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="w-6 shrink-0 text-right font-mono text-neutral-500">{globalRank}</span>
-                <span className="truncate font-medium">{r.name}</span>
+            <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+              <div className="flex min-w-0 items-center gap-3">
+                <RankBadge n={globalRank} />
+                <span
+                  className="truncate font-bold"
+                  style={{ color: "rgb(20 30 80)" }}
+                >
+                  {r.name}
+                </span>
               </div>
               <VoteButton
                 target_type={targetType}
@@ -61,12 +67,13 @@ export default function RankingList({ title, rows, targetType, myVotes }: Props)
                 initialLikes={r.likes}
                 initialDislikes={r.dislikes}
                 initialMyVote={myVote}
+                size="sm"
               />
             </li>
           );
         })}
         {visible.length === 0 && (
-          <li className="py-4 text-center text-sm text-neutral-400">결과가 없습니다.</li>
+          <li className="py-4 text-center text-sm font-bold text-neutral-400">결과가 없습니다.</li>
         )}
       </ol>
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />
@@ -74,33 +81,20 @@ export default function RankingList({ title, rows, targetType, myVotes }: Props)
   );
 }
 
-export function Pagination({
-  page,
-  totalPages,
-  onChange,
-}: {
-  page: number;
-  totalPages: number;
-  onChange: (p: number) => void;
-}) {
-  if (totalPages <= 1) return null;
+/** 순위 배지 — 상위 3등은 강조 (brand 채워짐), 나머지는 옅은 회색 outline. */
+function RankBadge({ n }: { n: number }) {
+  const top = n <= 3;
   return (
-    <div className="mt-3 flex items-center justify-center gap-3 text-sm">
-      <button
-        onClick={() => onChange(Math.max(1, page - 1))}
-        disabled={page <= 1}
-        className="rounded border px-3 py-1 font-bold disabled:opacity-50"
-      >
-        ◀ 이전
-      </button>
-      <span className="font-bold text-neutral-700">{page} / {totalPages}</span>
-      <button
-        onClick={() => onChange(Math.min(totalPages, page + 1))}
-        disabled={page >= totalPages}
-        className="rounded border px-3 py-1 font-bold disabled:opacity-50"
-      >
-        다음 ▶
-      </button>
-    </div>
+    <span
+      className={[
+        "grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold tabular-nums",
+        top ? "bg-brand text-brand-fg" : "border border-neutral-200 bg-neutral-50 text-neutral-500",
+      ].join(" ")}
+    >
+      {n}
+    </span>
   );
 }
+
+// Pagination 은 components/Pagination.tsx 로 이동 — re-export 로 기존 import 호환 유지.
+export { default as Pagination } from "./Pagination";

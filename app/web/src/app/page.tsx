@@ -4,11 +4,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import Map from "@/components/Map";
+import Pagination from "@/components/Pagination";
 import RestaurantGrid from "@/components/RestaurantGrid";
 import RestaurantList from "@/components/RestaurantList";
 import ViewToggle, { type SearchView } from "@/components/ViewToggle";
 import { api, type Channel, type Region, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
+
+// 뷰별 페이지네이션 사이즈 — grid 는 5열 × 6줄 = 30
+const LIST_PAGE_SIZE = 20;
+const GRID_PAGE_SIZE = 30;
+
+type Bounds = { sw_lat: number; sw_lng: number; ne_lat: number; ne_lng: number };
 
 const COUNT_COLOR = "rgb(90 97 106)";
 
@@ -51,6 +58,17 @@ export default function HomePage() {
   const [rows, setRows] = useState<Restaurant[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [view, setView] = useState<SearchView>("map");
+  const [page, setPage] = useState(1);
+  // 지도 viewport bounds — Map 컴포넌트가 onIdle 시 통지 → 그 영역만 fetch
+  const [bounds, setBounds] = useState<Bounds | null>(null);
+  // 식당 내 투표 상태 — 페이지 마운트 시 fetch. List/Grid 카드에 prop 으로 전달.
+  const [myR, setMyR] = useState<Record<string, 1 | -1>>({});
+  useEffect(() => {
+    api.myVotes("restaurant").then(setMyR).catch(() => setMyR({}));
+  }, []);
+
+  // list/grid 뷰일 때만 페이지네이션 크기 적용. map 뷰는 0 (cap/viewport 모드).
+  const pageSize = view === "list" ? LIST_PAGE_SIZE : view === "grid" ? GRID_PAGE_SIZE : 0;
 
   // sp 가 외부 네비게이션(홈/검색 탭 클릭 → '/' 이동)으로 변하면 state 도 동기화.
   // 같은 값이면 setState 가 noop 이라 무한루프 없음.
@@ -119,20 +137,28 @@ export default function HomePage() {
     [channelType, channelId, sido, sigungu, dong, cuisine, q],
   );
 
+  // 필터 변경 시 페이지 1로 리셋 — 빈 페이지 보이지 않도록
+  useEffect(() => { setPage(1); }, [channelType, channelId, sido, sigungu, dong, cuisine, q, view]);
+
   useEffect(() => {
-    if (!hasAnyFilter) {
-      // 검색 조건이 없을 때: 전체 레스토랑을 로드해 지도에 핀으로 표시 (지도 핀은 1000개로 cap).
-      api.listRestaurants({ limit: 1000 }).then(setRows).catch(() => setRows([]));
-      // 총개수는 별도 호출 — limit 무관
-      api.countRestaurants({}).then((r) => setTotalCount(r.count)).catch(() => setTotalCount(null));
-      return;
+    // 지도 뷰: viewport bounds 안의 식당만 fetch. bounds 미정 시 첫 fetch 는 limit 1000 fallback
+    // (onIdle 가 발화하는 동안 화면이 비어보이지 않도록).
+    // list/grid 뷰: 좋아요 desc + 이름 asc 정렬한 페이지만 fetch.
+    let fetchParams: Record<string, string | number | undefined>;
+    if (view === "map") {
+      fetchParams = bounds
+        ? { ...params, sw_lat: bounds.sw_lat, sw_lng: bounds.sw_lng, ne_lat: bounds.ne_lat, ne_lng: bounds.ne_lng }
+        : { ...params, limit: 1000 };
+    } else {
+      fetchParams = { ...params, page, page_size: pageSize, sort: "likes_desc" };
     }
-    const t = setTimeout(() => {
-      api.listRestaurants(params).then(setRows).catch(() => setRows([]));
+    const doFetch = () => {
+      api.listRestaurants(fetchParams).then(setRows).catch(() => setRows([]));
       api.countRestaurants(params).then((r) => setTotalCount(r.count)).catch(() => setTotalCount(null));
-    }, 200);
+    };
+    const t = setTimeout(doFetch, 200);
     return () => clearTimeout(t);
-  }, [params, hasAnyFilter]);
+  }, [params, view, page, pageSize, bounds]);
 
   // 필터 → URL 쿼리스트링 동기화 (공유 가능)
   useEffect(() => {
@@ -336,15 +362,57 @@ export default function HomePage() {
         </button>
       </div>
 
-      {/* 결과 영역 — 검색 필터와 상관없이 세 가지 보기 모두 전체 데이터 표시 */}
+      {/* 결과 영역 — 지도는 viewport bounds 기반 fetch(누락 없음), list/grid 는 페이지 단위 + 좋아요 정렬 */}
       {view === "map" ? (
         <div className="h-[68vh] overflow-hidden rounded-xl border border-neutral-200">
-          <Map restaurants={rows} center={mapCenter} level={mapLevel} />
+          <Map
+            restaurants={rows}
+            center={mapCenter}
+            level={mapLevel}
+            // onIdle 이 반복 발화해도 viewport 가 실제로 안 변하면 ref 유지 → 무의미한 fetch 방지
+            onBoundsChanged={(b) =>
+              setBounds((prev) => {
+                if (
+                  prev &&
+                  Math.abs(prev.sw_lat - b.sw_lat) < 1e-6 &&
+                  Math.abs(prev.sw_lng - b.sw_lng) < 1e-6 &&
+                  Math.abs(prev.ne_lat - b.ne_lat) < 1e-6 &&
+                  Math.abs(prev.ne_lng - b.ne_lng) < 1e-6
+                ) {
+                  return prev;
+                }
+                return b;
+              })
+            }
+          />
         </div>
-      ) : view === "list" ? (
-        <RestaurantList rows={rows} />
       ) : (
-        <RestaurantGrid rows={rows} />
+        <>
+          {view === "list"
+            ? <RestaurantList rows={rows} myVotes={myR} onMyVoteChange={(id, mv) =>
+                setMyR((prev) => {
+                  const next = { ...prev };
+                  if (mv === null) delete next[String(id)];
+                  else next[String(id)] = mv;
+                  return next;
+                })}
+              />
+            : <RestaurantGrid rows={rows} myVotes={myR} onMyVoteChange={(id, mv) =>
+                setMyR((prev) => {
+                  const next = { ...prev };
+                  if (mv === null) delete next[String(id)];
+                  else next[String(id)] = mv;
+                  return next;
+                })}
+              />
+          }
+          <Pagination
+            page={page}
+            totalPages={Math.max(1, Math.ceil((totalCount ?? 0) / pageSize))}
+            onChange={setPage}
+            totalCount={totalCount ?? undefined}
+          />
+        </>
       )}
     </div>
   );

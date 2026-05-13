@@ -9,6 +9,7 @@ import {
 } from "react-kakao-maps-sdk";
 
 import VoteButton from "@/components/VoteButton";
+import VoteLabel from "@/components/VoteLabel";
 import { api, type Appearance, type Restaurant } from "@/lib/api";
 
 type MyVotes = Record<string, 1 | -1>;
@@ -28,6 +29,8 @@ type Props = {
   restaurants: Restaurant[];
   center?: { lat: number; lng: number };
   level?: number;
+  /** 지도 viewport 가 안정화되면 부모에게 bounds 통지 — 페이지가 그 영역만 fetch 하도록 */
+  onBoundsChanged?: (b: { sw_lat: number; sw_lng: number; ne_lat: number; ne_lng: number }) => void;
 };
 
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // 서울특별시청
@@ -36,7 +39,7 @@ const DEFAULT_LEVEL = 4;
 
 // 함수 이름을 'Map' 으로 두면 본문 내 `new Map()` 이 글로벌 Map 대신 자기 자신을 가리킨다.
 // 이 충돌을 피하기 위해 함수 이름은 RestaurantMap, default export 는 그대로 유지.
-export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, level = DEFAULT_LEVEL }: Props) {
+export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, level = DEFAULT_LEVEL, onBoundsChanged }: Props) {
   const appkey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY ?? "";
   const [loading, error] = useKakaoLoader({ appkey, libraries: ["services"] });
 
@@ -166,6 +169,19 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
         style={{ width: "100%", height: "100%" }}
         // 지도 배경(핀이 아닌 영역) 클릭 시 열린 모달 닫기. 핀 클릭은 CustomOverlay 의 React onClick 이 잡으니 영향 없음.
         onClick={() => setSelected(null)}
+        // 사용자 조작 완료(이동/줌 idle) → viewport bounds 부모에게 통지 → 그 영역만 fetch.
+        onIdle={(map) => {
+          if (!onBoundsChanged) return;
+          const b = map.getBounds();
+          const sw = b.getSouthWest();
+          const ne = b.getNorthEast();
+          onBoundsChanged({
+            sw_lat: sw.getLat(),
+            sw_lng: sw.getLng(),
+            ne_lat: ne.getLat(),
+            ne_lng: ne.getLng(),
+          });
+        }}
       >
         {pinnable.map((r) => {
           const rep = restaurantRep.get(r.id);
@@ -266,7 +282,7 @@ function PinModal({
 }) {
   const rState = voteR[restaurant.id] ?? { likes: restaurant.likes ?? 0, dislikes: restaurant.dislikes ?? 0, myVote: null };
   return (
-    <div className="absolute right-4 top-4 z-10 w-[340px] rounded-2xl bg-white shadow-2xl ring-1 ring-neutral-200">
+    <div className="absolute right-4 top-4 z-10 w-[380px] rounded-2xl bg-white shadow-2xl ring-1 ring-neutral-200">
       <button
         onClick={onClose}
         aria-label="닫기"
@@ -277,8 +293,9 @@ function PinModal({
       <div className="p-4 pr-10">
         <div className="text-base font-bold text-brand">{restaurant.current_name}</div>
         <div className="mt-1 text-xs text-neutral-500">{restaurant.current_address}</div>
-        {/* 식당 투표 */}
-        <div className="mt-2">
+        {/* 식당 투표 — 라벨로 어떤 대상인지 명시 */}
+        <div className="mt-2 flex items-center gap-2">
+          <VoteLabel kind="restaurant" />
           <VoteButton
             target_type="restaurant"
             target_id={restaurant.id}
@@ -286,6 +303,7 @@ function PinModal({
             initialDislikes={rState.dislikes}
             initialMyVote={rState.myVote}
             onChange={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
+            size="sm"
           />
         </div>
         <div className="mt-3 flex gap-2">
@@ -379,10 +397,13 @@ function VideoRow({
             <div className="h-14 w-20 shrink-0 rounded bg-neutral-100" />
           )
         )}
-        <div className="flex-1 min-w-0">
-          {/* 채널명 + 채널 투표 */}
+        <div className="flex-1 min-w-0 space-y-1.5">
+          {/* 채널 라인 — 라벨 + 채널명 + 채널 투표 */}
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-xs font-bold text-neutral-500">{app.channels?.name ?? "—"}</span>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <VoteLabel kind="channel" />
+              <span className="truncate text-xs font-bold text-neutral-700">{app.channels?.name ?? "—"}</span>
+            </div>
             <VoteButton
               target_type="channel"
               target_id={app.channel_id}
@@ -390,23 +411,30 @@ function VideoRow({
               initialDislikes={chState.dislikes}
               initialMyVote={chState.myVote}
               onChange={onChangeCh}
+              size="sm"
             />
           </div>
-          <div className="mt-0.5 line-clamp-2 text-sm font-bold text-neutral-900">
-            {url ? (
-              <a href={url} target="_blank" rel="noreferrer" className="hover:text-brand">{app.episode_title ?? "에피소드"}</a>
-            ) : (app.episode_title ?? "에피소드")}
-          </div>
-          {/* 영상 투표 */}
-          <div className="mt-1">
-            <VoteButton
-              target_type="appearance"
-              target_id={app.id}
-              initialLikes={appState.likes}
-              initialDislikes={appState.dislikes}
-              initialMyVote={appState.myVote}
-              onChange={onChangeApp}
-            />
+          {/* 영상 라인 — 라벨+제목 한 줄, 투표는 별도 줄 우측 정렬 (모달 폭 안에서 잘림 방지) */}
+          <div>
+            <div className="flex min-w-0 items-start gap-1.5">
+              <VoteLabel kind="appearance" className="mt-0.5" />
+              <div className="line-clamp-2 text-sm font-bold text-neutral-900">
+                {url ? (
+                  <a href={url} target="_blank" rel="noreferrer" className="hover:text-brand">{app.episode_title ?? "에피소드"}</a>
+                ) : (app.episode_title ?? "에피소드")}
+              </div>
+            </div>
+            <div className="mt-1 flex justify-end">
+              <VoteButton
+                target_type="appearance"
+                target_id={app.id}
+                initialLikes={appState.likes}
+                initialDislikes={appState.dislikes}
+                initialMyVote={appState.myVote}
+                onChange={onChangeApp}
+                size="sm"
+              />
+            </div>
           </div>
         </div>
       </div>

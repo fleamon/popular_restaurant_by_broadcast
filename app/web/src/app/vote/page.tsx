@@ -21,7 +21,7 @@ export default function VotePage() {
   const [myA, setMyA] = useState<MyVotes>({});
 
   useEffect(() => {
-    api.topRestaurants(1000).then((rs) =>
+    api.topRestaurants().then((rs) =>
       setRestaurants(
         rs.map((r) => ({
           id: r.id,
@@ -45,9 +45,6 @@ export default function VotePage() {
   return (
     <div className="space-y-6">
       <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">투표 · 랭킹</h1>
-      <p className="text-sm font-bold text-neutral-500">
-        아이디당 대상별 1회 투표. 같은 버튼 다시 누르면 취소, 반대 버튼 누르면 전환됩니다.
-      </p>
 
       {/* 인기 급상승 영상 — 최근 7일 좋아요 가중치 */}
       <TrendingSection rows={trending} />
@@ -65,26 +62,33 @@ export default function VotePage() {
 function TrendingSection({ rows }: { rows: AppearanceScore[] }) {
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <TrendingIcon />
-        <h2 className="font-soft text-xl font-bold text-brand">인기 급상승 영상</h2>
-        <span className="text-xs font-bold text-neutral-400">최근 7일 좋아요에 가중치 3 적용</span>
+        <h2 className="font-soft text-xl font-bold tracking-tight text-brand">인기 급상승 영상</h2>
       </div>
       {rows.length === 0 ? (
-        <p className="text-sm text-neutral-400">아직 데이터가 없습니다.</p>
+        <p className="text-sm font-bold text-neutral-400">아직 데이터가 없습니다.</p>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {rows.slice(0, 6).map((v, i) => (
-            <li key={v.appearance_id} className="rounded-lg border border-neutral-100 p-3 hover:border-brand transition-colors">
+            <li
+              key={v.appearance_id}
+              className="rounded-lg border border-neutral-100 bg-white p-3 transition-colors hover:border-brand hover:bg-brand-surface"
+            >
               <Link href={`/restaurants/${v.restaurant_id}`}>
-                <div className="flex items-center gap-2">
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-brand text-brand-fg text-xs font-bold">
+                <div className="flex items-start gap-2">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand text-brand-fg text-xs font-bold tabular-nums">
                     {i + 1}
                   </span>
-                  <span className="text-sm font-bold text-neutral-900 line-clamp-1">{v.episode_title ?? "-"}</span>
+                  <span
+                    className="font-soft text-sm font-bold leading-snug line-clamp-2"
+                    style={{ color: "rgb(20 30 80)" }}
+                  >
+                    {v.episode_title ?? "-"}
+                  </span>
                 </div>
-                <div className="mt-2 text-xs text-neutral-500">
-                  급상승점수 {Math.round(Number(v.trend_score ?? 0))}
+                <div className="mt-2 inline-flex items-center gap-1 rounded-md bg-brand-surface px-2 py-0.5 text-[11px] font-bold text-brand tabular-nums">
+                  급상승 {Math.round(Number(v.trend_score ?? 0))}
                 </div>
               </Link>
             </li>
@@ -121,8 +125,8 @@ function VideoRanking({ rows, myVotes }: { rows: AppearanceScore[]; myVotes: MyV
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="font-soft text-xl font-bold text-brand">영상 좋아요 랭킹</h2>
-        <span className="text-xs text-neutral-400">총 {sorted.length}</span>
+        <h2 className="font-soft text-xl font-bold tracking-tight text-brand">영상 좋아요 랭킹</h2>
+        <span className="text-xs font-bold text-neutral-400">총 {sorted.length}</span>
       </div>
       <input
         placeholder="영상 제목 / 채널 / 식당 이름 검색"
@@ -133,17 +137,39 @@ function VideoRanking({ rows, myVotes }: { rows: AppearanceScore[]; myVotes: MyV
       <ol className="divide-y divide-neutral-100">
         {visible.map((v, i) => {
           const rank = (page - 1) * VIDEO_PAGE_SIZE + i + 1;
+          const top = rank <= 3;
           const myVote = myVotes[String(v.appearance_id)] ?? null;
           return (
             <li key={v.appearance_id} className="flex items-center justify-between gap-3 py-3 text-sm">
-              <Link href={`/restaurants/${v.restaurant_id}`} className="flex flex-1 items-center gap-3 min-w-0">
-                <span className="w-6 shrink-0 text-right font-mono text-neutral-500">{rank}</span>
+              <Link href={`/restaurants/${v.restaurant_id}`} className="flex min-w-0 flex-1 items-start gap-3">
+                <span
+                  className={[
+                    "grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold tabular-nums",
+                    top ? "bg-brand text-brand-fg" : "border border-neutral-200 bg-neutral-50 text-neutral-500",
+                  ].join(" ")}
+                >
+                  {rank}
+                </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-bold text-neutral-900">{v.episode_title ?? "-"}</div>
-                  <div className="mt-0.5 truncate text-xs text-neutral-500">
-                    {v.channel_name && <span className="font-bold text-brand">📺 {v.channel_name}</span>}
-                    {v.channel_name && v.restaurant_name && <span className="mx-1">·</span>}
-                    {v.restaurant_name && <span>🍽 {v.restaurant_name}</span>}
+                  {/* 영상 제목 — 가장 진한 강조 */}
+                  <div
+                    className="font-soft truncate text-sm font-bold leading-snug"
+                    style={{ color: "rgb(20 30 80)" }}
+                  >
+                    {v.episode_title ?? "-"}
+                  </div>
+                  {/* 메타 라인 — 채널 / 식당. chip 두 개로 시각 분리, brand 톤만 사용 */}
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    {v.channel_name && (
+                      <span className="rounded-md bg-brand-surface px-1.5 py-0.5 font-bold leading-none text-brand">
+                        📺 {v.channel_name}
+                      </span>
+                    )}
+                    {v.restaurant_name && (
+                      <span className="rounded-md bg-neutral-100 px-1.5 py-0.5 font-bold leading-none text-neutral-700">
+                        🍽 {v.restaurant_name}
+                      </span>
+                    )}
                   </div>
                 </div>
               </Link>
@@ -153,12 +179,13 @@ function VideoRanking({ rows, myVotes }: { rows: AppearanceScore[]; myVotes: MyV
                 initialLikes={v.likes}
                 initialDislikes={v.dislikes ?? 0}
                 initialMyVote={myVote}
+                size="sm"
               />
             </li>
           );
         })}
         {visible.length === 0 && (
-          <li className="py-4 text-center text-sm text-neutral-400">결과가 없습니다.</li>
+          <li className="py-4 text-center text-sm font-bold text-neutral-400">결과가 없습니다.</li>
         )}
       </ol>
       <Pagination page={page} totalPages={totalPages} onChange={setPage} />

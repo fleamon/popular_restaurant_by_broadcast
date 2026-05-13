@@ -45,6 +45,21 @@ _TRANSIENT_EXC = (
 T = TypeVar("T")
 
 
+def fetch_all(builder: Any, page_size: int = 1000) -> list[dict]:
+    """Postgrest 1회 응답 1000행 한도를 페이지 단위 누적으로 우회.
+    .order() 가 적용된 빌더에 그대로 .range() 만 추가해 호출 — 정렬 유지됨.
+    """
+    out: list[dict] = []
+    start = 0
+    while True:
+        chunk = exec_with_retry(builder.range(start, start + page_size - 1)).data or []
+        out.extend(chunk)
+        if len(chunk) < page_size:
+            break
+        start += page_size
+    return out
+
+
 def exec_with_retry(builder: Any, retries: int = 3) -> Any:
     """Supabase 빌더의 .execute() 를 transient 전송 오류에 대해 자동 재시도.
 

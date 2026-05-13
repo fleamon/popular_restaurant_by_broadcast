@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useKakaoLoader } from "react-kakao-maps-sdk";
 
+import Pagination from "@/components/Pagination";
 import { api, type Channel, type ChannelUpdateBody, type IngestEvent, type MeResponse, type UserUpdateBody } from "@/lib/api";
 import { geocode } from "@/lib/geocode";
 import { useMe } from "@/lib/me";
@@ -119,27 +120,7 @@ function UserManagement({ onChannelsChanged }: { onChannelsChanged: () => void }
           </tbody>
         </table>
       </div>
-      <div className="flex items-center gap-3 text-sm">
-        <button
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-          disabled={page <= 1}
-          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
-          style={{ color: "rgb(20 30 80)" }}
-        >
-          ◀ 이전
-        </button>
-        <span className="font-bold" style={{ color: "rgb(20 30 80)" }}>
-          {page} / {totalPages} <span style={{ color: "rgb(110 120 140)" }}>(총 {total})</span>
-        </span>
-        <button
-          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          disabled={page >= totalPages}
-          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
-          style={{ color: "rgb(20 30 80)" }}
-        >
-          다음 ▶
-        </button>
-      </div>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} totalCount={total} />
 
       {savedModal && (
         <SavedModal result={savedModal} onClose={() => setSavedModal(null)} />
@@ -390,27 +371,7 @@ function ChannelManagement({
         </table>
       </div>
 
-      <div className="flex items-center gap-3 text-sm">
-        <button
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-          disabled={page <= 1}
-          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
-          style={{ color: "rgb(20 30 80)" }}
-        >
-          ◀ 이전
-        </button>
-        <span className="font-bold" style={{ color: "rgb(20 30 80)" }}>
-          {page} / {totalPages} <span style={{ color: "rgb(110 120 140)" }}>(총 {filtered.length})</span>
-        </span>
-        <button
-          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          disabled={page >= totalPages}
-          className="rounded border px-3 py-1 font-bold disabled:opacity-50"
-          style={{ color: "rgb(20 30 80)" }}
-        >
-          다음 ▶
-        </button>
-      </div>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} totalCount={filtered.length} />
 
       {msg && (
         <p className="text-xs font-bold" style={{ color: msg.startsWith("✅") ? "rgb(20 130 60)" : msg.startsWith("❌") ? "rgb(200 40 40)" : "rgb(80 95 130)" }}>

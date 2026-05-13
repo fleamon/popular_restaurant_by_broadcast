@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_admin
-from ..services.supabase_client import exec_with_retry, get_anon_client, get_service_client
+from ..services.supabase_client import exec_with_retry, fetch_all, get_anon_client, get_service_client
 
 
 def _norm_channel(name: str) -> str:
@@ -64,20 +64,99 @@ def list_restaurants(
     channel_type: str | None = Query(default=None),
     q: str | None = Query(default=None, description="가게명 like 검색"),
     limit: int = Query(default=500, le=1000),
+    page: int = Query(default=0, ge=0, description="1-based 페이지. 0/미지정 시 limit 모드"),
+    page_size: int = Query(default=0, ge=0, le=100, description="페이지당 행 수. 0/미지정 시 limit 모드"),
+    sort: str = Query(default="id_desc", description="id_desc | likes_desc (likes desc + name asc)"),
+    # 지도 viewport bounds — 모두 주어지면 lat/lng 박스 필터 추가
+    sw_lat: float | None = Query(default=None),
+    sw_lng: float | None = Query(default=None),
+    ne_lat: float | None = Query(default=None),
+    ne_lng: float | None = Query(default=None),
 ) -> list[dict]:
     sb = get_anon_client()
     allowed = _resolve_channel_filter(sb, channel_id=channel_id, channel_type=channel_type)
     if allowed is not None and not allowed:
         return []
 
-    query = sb.table("restaurants").select("*").limit(limit)
-    if sido:    query = query.eq("sido", sido)
-    if sigungu: query = query.eq("sigungu", sigungu)
-    if dong:    query = query.eq("dong", dong)
-    if cuisine: query = query.eq("cuisine", cuisine)
-    if q:       query = query.ilike("current_name", f"%{q}%")
-    rows = exec_with_retry(query).data or []
+    def _apply_filters(qb):
+        if sido:    qb = qb.eq("sido", sido)
+        if sigungu: qb = qb.eq("sigungu", sigungu)
+        if dong:    qb = qb.eq("dong", dong)
+        if cuisine: qb = qb.eq("cuisine", cuisine)
+        if q:       qb = qb.ilike("current_name", f"%{q}%")
+        # viewport bounds — sw=남서, ne=북동
+        if sw_lat is not None and ne_lat is not None:
+            qb = qb.gte("lat", sw_lat).lte("lat", ne_lat)
+        if sw_lng is not None and ne_lng is not None:
+            qb = qb.gte("lng", sw_lng).lte("lng", ne_lng)
+        return qb
 
+    has_bounds = all(v is not None for v in (sw_lat, sw_lng, ne_lat, ne_lng))
+    paged = page > 0 and page_size > 0
+
+    # (A) viewport 모드 — bounds 만 주어지고 페이지네이션 없음 → 그 영역 모두 반환 (limit cap 없음)
+    if has_bounds and not paged:
+        rows = fetch_all(_apply_filters(sb.table("restaurants").select("*")))
+        if allowed is not None:
+            rows = [r for r in rows if r["id"] in allowed]
+        return rows
+
+    # (B) 좋아요 정렬 + 페이지 모드 — likes desc, name asc. score 와 결합 후 메모리 정렬.
+    if sort == "likes_desc" and paged:
+        # 1) 필터 적용된 모든 (id, name) 받기
+        index_rows = fetch_all(_apply_filters(sb.table("restaurants").select("id, current_name")))
+        if allowed is not None:
+            index_rows = [r for r in index_rows if r["id"] in allowed]
+        if not index_rows:
+            return []
+        # 2) score 매핑 (chunk in_)
+        ids = [r["id"] for r in index_rows]
+        score_by_id: dict[int, dict] = {}
+        CHUNK = 500
+        for i in range(0, len(ids), CHUNK):
+            sc = exec_with_retry(
+                sb.table("v_restaurant_score").select("restaurant_id, likes, dislikes, net_score")
+                  .in_("restaurant_id", ids[i:i + CHUNK])
+            ).data or []
+            for s in sc:
+                score_by_id[s["restaurant_id"]] = s
+        # 3) 정렬 — (-likes, name asc, -id) 보조키
+        index_rows.sort(key=lambda r: (
+            -int(score_by_id.get(r["id"], {}).get("likes", 0) or 0),
+            r.get("current_name") or "",
+            -r["id"],
+        ))
+        # 4) 페이지 슬라이스 → 5) full 데이터 + score 합치기
+        start = (page - 1) * page_size
+        page_ids = [r["id"] for r in index_rows[start: start + page_size]]
+        if not page_ids:
+            return []
+        full = exec_with_retry(sb.table("restaurants").select("*").in_("id", page_ids)).data or []
+        full_by_id = {r["id"]: r for r in full}
+        out: list[dict] = []
+        for rid in page_ids:  # 정렬 순서 유지
+            f = full_by_id.get(rid)
+            if not f:
+                continue
+            s = score_by_id.get(rid, {})
+            out.append({
+                **f,
+                "likes": int(s.get("likes", 0) or 0),
+                "dislikes": int(s.get("dislikes", 0) or 0),
+                "net_score": int(s.get("net_score", 0) or 0),
+            })
+        return out
+
+    # (C) 기본 id desc + page — 가장 단순
+    query = _apply_filters(sb.table("restaurants").select("*").order("id", desc=True))
+    if paged and allowed is None:
+        start = (page - 1) * page_size
+        rows = exec_with_retry(query.range(start, start + page_size - 1)).data or []
+        return rows
+
+    # (D) limit fallback
+    query = query.limit(limit)
+    rows = exec_with_retry(query).data or []
     if allowed is not None:
         rows = [r for r in rows if r["id"] in allowed]
     return rows
@@ -188,15 +267,20 @@ def list_regions() -> list[dict]:
 
 
 @router.get("/top")
-def top_restaurants(limit: int = Query(default=1000, le=1000)) -> list[dict]:
+def top_restaurants() -> list[dict]:
+    """식당 좋아요 랭킹 — 전체. PostgREST 1000행 한도는 fetch_all 로 페이지 누적, IN 청크."""
     sb = get_anon_client()
-    scores = exec_with_retry(
-        sb.table("v_restaurant_score").select("*").order("likes", desc=True).order("net_score", desc=True).limit(limit)
-    ).data or []
+    scores = fetch_all(
+        sb.table("v_restaurant_score").select("*").order("likes", desc=True).order("net_score", desc=True)
+    )
     if not scores:
         return []
     ids = [s["restaurant_id"] for s in scores]
-    details = exec_with_retry(sb.table("restaurants").select("*").in_("id", ids)).data or []
+    # IN 절 URL 길이 한계 회피용 청크
+    details: list[dict] = []
+    CHUNK = 500
+    for i in range(0, len(ids), CHUNK):
+        details.extend(exec_with_retry(sb.table("restaurants").select("*").in_("id", ids[i:i + CHUNK])).data or [])
     by_id = {d["id"]: d for d in details}
     return [{**by_id[s["restaurant_id"]], **s} for s in scores if s["restaurant_id"] in by_id]
 

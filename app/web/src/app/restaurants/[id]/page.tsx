@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import VoteButton from "@/components/VoteButton";
+import VoteLabel from "@/components/VoteLabel";
 import { api, type Appearance, type ExternalInfo, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
 
@@ -96,16 +97,7 @@ export default function RestaurantDetailPage() {
         <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">{restaurant.current_name}</h1>
         <p className="mt-1 text-sm font-bold text-neutral-500">{restaurant.current_address}</p>
         {restaurant.cuisine && <p className="text-xs text-neutral-400">{restaurant.cuisine}</p>}
-        <div className="mt-2">
-          <VoteButton
-            target_type="restaurant"
-            target_id={restaurant.id}
-            initialLikes={rState.likes}
-            initialDislikes={rState.dislikes}
-            initialMyVote={rState.myVote}
-            onChange={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
-          />
-        </div>
+        {/* 식당 좋아요/싫어요는 하단 '식당 정보' 카드에서만 노출 — 페이지 상단은 제목만 */}
       </div>
 
       {/* YouTube 임베드 */}
@@ -158,10 +150,13 @@ export default function RestaurantDetailPage() {
             const aState = voteA[a.id] ?? { likes: a.likes ?? 0, dislikes: a.dislikes ?? 0, myVote: null };
             const cState = voteC[a.channel_id] ?? { likes: a.channels?.likes ?? 0, dislikes: a.channels?.dislikes ?? 0, myVote: null };
             return (
-              <li key={a.id} className="rounded-lg border border-neutral-200 bg-white p-3">
-                {/* 채널명 + 채널 투표 */}
+              <li key={a.id} className="rounded-lg border border-neutral-200 bg-white p-3 space-y-2">
+                {/* 채널 라인 */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-neutral-500">{a.channels?.name}</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <VoteLabel kind="channel" />
+                    <span className="truncate text-sm font-bold text-neutral-700">{a.channels?.name ?? "—"}</span>
+                  </div>
                   <VoteButton
                     target_type="channel"
                     target_id={a.channel_id}
@@ -169,12 +164,18 @@ export default function RestaurantDetailPage() {
                     initialDislikes={cState.dislikes}
                     initialMyVote={cState.myVote}
                     onChange={(next) => setVoteC((prev) => ({ ...prev, [a.channel_id]: next }))}
+                    size="sm"
                   />
                 </div>
-                <div className="mt-1 text-sm font-bold text-neutral-900">{a.episode_title}</div>
-                <div className="mt-1 text-xs text-neutral-400">{a.aired_at ?? ""}</div>
-                {/* 영상 투표 + 영상 보기 링크 */}
-                <div className="mt-2 flex items-center justify-between gap-2">
+                {/* 영상 라인 */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <VoteLabel kind="appearance" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-neutral-900 line-clamp-2">{a.episode_title}</div>
+                      <div className="mt-0.5 text-xs text-neutral-400">{a.aired_at ?? ""}</div>
+                    </div>
+                  </div>
                   <VoteButton
                     target_type="appearance"
                     target_id={a.id}
@@ -182,13 +183,16 @@ export default function RestaurantDetailPage() {
                     initialDislikes={aState.dislikes}
                     initialMyVote={aState.myVote}
                     onChange={(next) => setVoteA((prev) => ({ ...prev, [a.id]: next }))}
+                    size="sm"
                   />
-                  {a.source_url && (
+                </div>
+                {a.source_url && (
+                  <div className="text-right">
                     <a href={a.source_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-brand">
                       영상 보기 →
                     </a>
-                  )}
-                </div>
+                  </div>
+                )}
               </li>
             );
           })}
@@ -247,14 +251,17 @@ function PlaceInfo({
           <p className="mt-1 text-base font-bold text-neutral-900">{restaurant.current_name}</p>
           <p className="mt-0.5 text-xs text-neutral-500">{restaurant.current_address}</p>
         </div>
-        <VoteButton
-          target_type="restaurant"
-          target_id={restaurant.id}
-          initialLikes={rState.likes}
-          initialDislikes={rState.dislikes}
-          initialMyVote={rState.myVote}
-          onChange={onChangeR}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          <VoteLabel kind="restaurant" />
+          <VoteButton
+            target_type="restaurant"
+            target_id={restaurant.id}
+            initialLikes={rState.likes}
+            initialDislikes={rState.dislikes}
+            initialMyVote={rState.myVote}
+            onChange={onChangeR}
+          />
+        </div>
       </div>
 
       {/* 메타 칩 한 줄 — 카테고리 / 영업시간 */}

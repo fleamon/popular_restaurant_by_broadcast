@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_superadmin
-from ..services.supabase_client import exec_with_retry, get_anon_client, get_service_client
+from ..services.supabase_client import exec_with_retry, fetch_all, get_anon_client, get_service_client
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
@@ -23,27 +23,31 @@ def list_channels(channel_type: str | None = Query(default=None)) -> list[dict]:
 
 
 @router.get("/ranking")
-def channel_ranking(limit: int = Query(default=1000, le=1000)) -> list[dict]:
+def channel_ranking() -> list[dict]:
+    """채널 좋아요 랭킹 — 전체. PostgREST 1000행 한도는 fetch_all 로 페이지 누적."""
     sb = get_anon_client()
-    rows = exec_with_retry(
-        sb.table("v_channel_score").select("*").order("likes", desc=True).limit(limit)
-    ).data or []
+    rows = fetch_all(sb.table("v_channel_score").select("*").order("likes", desc=True))
     return [{**r, "id": r["channel_id"]} for r in rows]
 
 
 @router.get("/appearances/ranking")
-def appearance_ranking(limit: int = Query(default=1000, le=1000)) -> list[dict]:
-    """영상 좋아요 랭킹 — vote 탭 '영상 랭킹' 용. 채널명·식당명 enrich."""
+def appearance_ranking() -> list[dict]:
+    """영상 좋아요 랭킹 — 전체. 채널명·식당명 enrich. IN 절 URL 한계는 청크 처리."""
     sb = get_anon_client()
-    rows = exec_with_retry(
-        sb.table("v_appearance_score").select("*").order("likes", desc=True).limit(limit)
-    ).data or []
+    rows = fetch_all(sb.table("v_appearance_score").select("*").order("likes", desc=True))
     if not rows:
         return []
     ch_ids = list({r["channel_id"] for r in rows if r.get("channel_id") is not None})
     rest_ids = list({r["restaurant_id"] for r in rows if r.get("restaurant_id") is not None})
-    chs = exec_with_retry(sb.table("channels").select("id, name").in_("id", ch_ids)).data or [] if ch_ids else []
-    rests = exec_with_retry(sb.table("restaurants").select("id, current_name").in_("id", rest_ids)).data or [] if rest_ids else []
+
+    def _fetch_in_chunks(table: str, cols: str, ids: list[int], chunk: int = 500) -> list[dict]:
+        out: list[dict] = []
+        for i in range(0, len(ids), chunk):
+            out.extend(exec_with_retry(sb.table(table).select(cols).in_("id", ids[i:i + chunk])).data or [])
+        return out
+
+    chs = _fetch_in_chunks("channels", "id, name", ch_ids) if ch_ids else []
+    rests = _fetch_in_chunks("restaurants", "id, current_name", rest_ids) if rest_ids else []
     ch_map = {c["id"]: c["name"] for c in chs}
     rest_map = {r["id"]: r["current_name"] for r in rests}
     return [

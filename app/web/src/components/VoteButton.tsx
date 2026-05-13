@@ -12,10 +12,12 @@ type Props = Omit<VoteBody, "value"> & {
   initialMyVote?: 1 | -1 | null;
   /** 클릭 후 새 상태 알림 — 부모가 다른 인스턴스(같은 target)들 동기화하는데 사용. */
   onChange?: (next: { likes: number; dislikes: number; myVote: 1 | -1 | null }) => void;
+  /** 컴팩트 모드 — 영상 행 처럼 좁은 공간용 */
+  size?: "sm" | "md";
 };
 
 /** 좋아요/싫어요 토글 — 같은 버튼 다시 누르면 취소, 반대 버튼 누르면 갱신.
- *  좌측 카운터는 로컬 state 로 즉시 반영 (서버 라운드트립 안 기다리고 낙관적 갱신).
+ *  segmented control 디자인 — 두 버튼이 하나로 묶여 보이고, 활성 상태는 브랜드 컬러로 채워짐.
  */
 export default function VoteButton({
   target_type,
@@ -24,6 +26,7 @@ export default function VoteButton({
   initialDislikes = 0,
   initialMyVote = null,
   onChange,
+  size = "md",
 }: Props) {
   const [likes, setLikes] = useState(initialLikes);
   const [dislikes, setDislikes] = useState(initialDislikes);
@@ -79,30 +82,70 @@ export default function VoteButton({
   const likeActive = myVote === 1;
   const dislikeActive = myVote === -1;
 
+  const pad = size === "sm" ? "px-2.5 py-1" : "px-3 py-1.5";
+  const iconSize = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
+  const txt = size === "sm" ? "text-xs" : "text-sm";
+
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div
+      className={[
+        "inline-flex overflow-hidden rounded-lg border bg-white",
+        busy ? "opacity-60" : "",
+        txt,
+      ].join(" ")}
+      style={{ borderColor: "rgb(225 230 240)" }}
+    >
       <button
+        type="button"
         onClick={() => void handleClick(1)}
         disabled={busy}
         aria-pressed={likeActive}
+        aria-label="좋아요"
         className={[
-          "rounded-md border px-2 py-1 transition-colors disabled:opacity-50",
-          likeActive ? "border-brand bg-brand text-brand-fg font-bold" : "hover:bg-brand-surface",
+          "flex items-center gap-1 transition-colors",
+          pad,
+          likeActive
+            ? "bg-brand text-brand-fg font-bold"
+            : "text-neutral-700 hover:bg-brand-surface",
         ].join(" ")}
       >
-        👍 {likes}
+        <ThumbUpIcon className={iconSize} />
+        <span className="tabular-nums font-bold">{likes}</span>
       </button>
+      <div className="w-px" style={{ background: "rgb(225 230 240)" }} />
       <button
+        type="button"
         onClick={() => void handleClick(-1)}
         disabled={busy}
         aria-pressed={dislikeActive}
+        aria-label="싫어요"
         className={[
-          "rounded-md border px-2 py-1 transition-colors disabled:opacity-50",
-          dislikeActive ? "border-neutral-700 bg-neutral-700 text-white font-bold" : "hover:bg-neutral-50",
+          "flex items-center gap-1 transition-colors",
+          pad,
+          dislikeActive
+            ? "bg-neutral-800 text-white font-bold"
+            : "text-neutral-500 hover:bg-neutral-100",
         ].join(" ")}
       >
-        👎 {dislikes}
+        <ThumbDownIcon className={iconSize} />
+        <span className="tabular-nums font-bold">{dislikes}</span>
       </button>
     </div>
+  );
+}
+
+function ThumbUpIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M2 21h4V9H2v12zm20-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13.17 1 7.59 6.59C7.22 6.95 7 7.45 7 8v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-1z"/>
+    </svg>
+  );
+}
+
+function ThumbDownIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v1.91l.01.01L1 14c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/>
+    </svg>
   );
 }
