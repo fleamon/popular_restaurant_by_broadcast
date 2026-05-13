@@ -23,22 +23,38 @@ def list_channels(channel_type: str | None = Query(default=None)) -> list[dict]:
 
 
 @router.get("/ranking")
-def channel_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
+def channel_ranking(limit: int = Query(default=1000, le=1000)) -> list[dict]:
     sb = get_anon_client()
     rows = exec_with_retry(
-        sb.table("v_channel_score").select("*").order("net_score", desc=True).limit(limit)
+        sb.table("v_channel_score").select("*").order("likes", desc=True).limit(limit)
     ).data or []
     return [{**r, "id": r["channel_id"]} for r in rows]
 
 
 @router.get("/appearances/ranking")
-def appearance_ranking(limit: int = Query(default=20, le=100)) -> list[dict]:
-    """영상 좋아요 랭킹 — vote 탭 '영상 랭킹' 용."""
+def appearance_ranking(limit: int = Query(default=1000, le=1000)) -> list[dict]:
+    """영상 좋아요 랭킹 — vote 탭 '영상 랭킹' 용. 채널명·식당명 enrich."""
     sb = get_anon_client()
     rows = exec_with_retry(
-        sb.table("v_appearance_score").select("*").order("net_score", desc=True).limit(limit)
+        sb.table("v_appearance_score").select("*").order("likes", desc=True).limit(limit)
     ).data or []
-    return [{**r, "id": r["appearance_id"]} for r in rows]
+    if not rows:
+        return []
+    ch_ids = list({r["channel_id"] for r in rows if r.get("channel_id") is not None})
+    rest_ids = list({r["restaurant_id"] for r in rows if r.get("restaurant_id") is not None})
+    chs = exec_with_retry(sb.table("channels").select("id, name").in_("id", ch_ids)).data or [] if ch_ids else []
+    rests = exec_with_retry(sb.table("restaurants").select("id, current_name").in_("id", rest_ids)).data or [] if rest_ids else []
+    ch_map = {c["id"]: c["name"] for c in chs}
+    rest_map = {r["id"]: r["current_name"] for r in rests}
+    return [
+        {
+            **r,
+            "id": r["appearance_id"],
+            "channel_name": ch_map.get(r["channel_id"]),
+            "restaurant_name": rest_map.get(r["restaurant_id"]),
+        }
+        for r in rows
+    ]
 
 
 @router.get("/appearances/trending")

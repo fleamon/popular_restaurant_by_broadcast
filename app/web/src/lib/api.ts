@@ -74,7 +74,14 @@ export const api = {
     return request<{ count: number }>(`/restaurants/count?${qs}`);
   },
   topRestaurants: (limit = 10) => request<Restaurant[]>(`/restaurants/top?limit=${limit}`),
+  getRestaurant: (id: number) => request<Restaurant | null>(`/restaurants/${id}`),
   listRegions: () => request<Region[]>(`/restaurants/regions`),
+  regionCenter: (params: { sido?: string; sigungu?: string; dong?: string }) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => !!v) as [string, string][],
+    );
+    return request<{ lat: number | null; lng: number | null }>(`/restaurants/region-center?${qs}`);
+  },
   topAppearance: (rid: number) => request<Appearance | null>(`/restaurants/${rid}/top-appearance`),
   topAppearances: (rid: number) => request<Appearance[]>(`/restaurants/${rid}/top-appearances`),
   topAppearancesBatch: (ids: number[]) =>
@@ -111,6 +118,12 @@ export const api = {
   // votes
   vote: (body: VoteBody) =>
     request<{ ok: boolean }>(`/votes`, { method: "POST", body: JSON.stringify(body) }, true),
+  unvote: (target_type: VoteBody["target_type"], target_id: number) => {
+    const qs = new URLSearchParams({ target_type, target_id: String(target_id) });
+    return request<{ ok: boolean }>(`/votes?${qs}`, { method: "DELETE" }, true);
+  },
+  myVotes: (target_type: VoteBody["target_type"]) =>
+    request<Record<string, 1 | -1>>(`/votes/mine?target_type=${target_type}`, undefined, true),
 
   // admin — channel auto-ingest (SSE)
   ingestChannel: (handle: string, max_videos: number) =>
@@ -160,6 +173,8 @@ export type Channel = {
   thumbnail_url?: string | null;
   wiki_url?: string | null;
   description?: string | null;
+  likes?: number;
+  dislikes?: number;
 };
 
 export type ChannelUpdateBody = {
@@ -190,6 +205,8 @@ export type AppearanceScore = {
   appearance_id: number;
   restaurant_id: number;
   channel_id: number;
+  channel_name?: string | null;
+  restaurant_name?: string | null;
   episode_title?: string | null;
   source_url?: string | null;
   youtube_video_id?: string | null;

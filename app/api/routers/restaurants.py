@@ -18,6 +18,42 @@ def _norm_channel(name: str) -> str:
 router = APIRouter(prefix="/restaurants", tags=["restaurants"])
 
 
+# Postgrest 는 응답 1회당 기본 1000행 한도. appearances 가 그 이상이면 페이지 누적 필요.
+def _all_restaurant_ids_for_channels(sb, channel_ids: list[int]) -> set[int]:
+    """주어진 채널 ID 들의 모든 appearances 를 페이지 단위로 훑어 distinct restaurant_id 반환."""
+    if not channel_ids:
+        return set()
+    out: set[int] = set()
+    start = 0
+    PAGE = 1000
+    while True:
+        chunk = exec_with_retry(
+            sb.table("appearances").select("restaurant_id")
+              .in_("channel_id", channel_ids).range(start, start + PAGE - 1)
+        ).data or []
+        out.update(r["restaurant_id"] for r in chunk)
+        if len(chunk) < PAGE:
+            break
+        start += PAGE
+    return out
+
+
+def _resolve_channel_filter(
+    sb, *, channel_id: int | None, channel_type: str | None,
+) -> set[int] | None:
+    """channel_id / channel_type 필터를 restaurant_id 집합으로 환원. 필터 없으면 None."""
+    if channel_id:
+        return _all_restaurant_ids_for_channels(sb, [channel_id])
+    if channel_type:
+        ch_rows = exec_with_retry(
+            sb.table("channels").select("id").eq("channel_type", channel_type)
+        ).data or []
+        if not ch_rows:
+            return set()
+        return _all_restaurant_ids_for_channels(sb, [c["id"] for c in ch_rows])
+    return None
+
+
 @router.get("")
 def list_restaurants(
     sido: str | None = Query(default=None),
@@ -30,6 +66,10 @@ def list_restaurants(
     limit: int = Query(default=500, le=1000),
 ) -> list[dict]:
     sb = get_anon_client()
+    allowed = _resolve_channel_filter(sb, channel_id=channel_id, channel_type=channel_type)
+    if allowed is not None and not allowed:
+        return []
+
     query = sb.table("restaurants").select("*").limit(limit)
     if sido:    query = query.eq("sido", sido)
     if sigungu: query = query.eq("sigungu", sigungu)
@@ -38,25 +78,8 @@ def list_restaurants(
     if q:       query = query.ilike("current_name", f"%{q}%")
     rows = exec_with_retry(query).data or []
 
-    if channel_id:
-        app_rows = exec_with_retry(
-            sb.table("appearances").select("restaurant_id").eq("channel_id", channel_id)
-        ).data or []
-        allowed = {r["restaurant_id"] for r in app_rows}
+    if allowed is not None:
         rows = [r for r in rows if r["id"] in allowed]
-    elif channel_type:
-        ch_rows = exec_with_retry(
-            sb.table("channels").select("id").eq("channel_type", channel_type)
-        ).data or []
-        if not ch_rows:
-            return []
-        ch_ids = [c["id"] for c in ch_rows]
-        app_rows = exec_with_retry(
-            sb.table("appearances").select("restaurant_id").in_("channel_id", ch_ids)
-        ).data or []
-        allowed = {r["restaurant_id"] for r in app_rows}
-        rows = [r for r in rows if r["id"] in allowed]
-
     return rows
 
 
@@ -72,41 +95,73 @@ def restaurants_count(
 ) -> dict:
     """list_restaurants 와 동일 필터 적용 후 총개수만 반환 (limit 무관)."""
     sb = get_anon_client()
+    allowed = _resolve_channel_filter(sb, channel_id=channel_id, channel_type=channel_type)
+    if allowed is not None and not allowed:
+        return {"count": 0}
 
-    allowed_ids: set[int] | None = None
-    if channel_id:
-        app_rows = exec_with_retry(
-            sb.table("appearances").select("restaurant_id").eq("channel_id", channel_id)
-        ).data or []
-        allowed_ids = {r["restaurant_id"] for r in app_rows}
-        if not allowed_ids:
-            return {"count": 0}
-    elif channel_type:
-        ch_rows = exec_with_retry(
-            sb.table("channels").select("id").eq("channel_type", channel_type)
-        ).data or []
-        if not ch_rows:
-            return {"count": 0}
-        ch_ids = [c["id"] for c in ch_rows]
-        app_rows = exec_with_retry(
-            sb.table("appearances").select("restaurant_id").in_("channel_id", ch_ids)
-        ).data or []
-        allowed_ids = {r["restaurant_id"] for r in app_rows}
-        if not allowed_ids:
-            return {"count": 0}
+    def base_q():
+        b = sb.table("restaurants").select("id", count="exact").limit(1)
+        if sido:    b = b.eq("sido", sido)
+        if sigungu: b = b.eq("sigungu", sigungu)
+        if dong:    b = b.eq("dong", dong)
+        if cuisine: b = b.eq("cuisine", cuisine)
+        if q:       b = b.ilike("current_name", f"%{q}%")
+        return b
 
-    # Postgrest count="exact" 사용 — limit(1) 로 데이터는 안 받고 count 만 헤더로
-    query = sb.table("restaurants").select("id", count="exact").limit(1)
-    if sido:    query = query.eq("sido", sido)
-    if sigungu: query = query.eq("sigungu", sigungu)
-    if dong:    query = query.eq("dong", dong)
-    if cuisine: query = query.eq("cuisine", cuisine)
-    if q:       query = query.ilike("current_name", f"%{q}%")
-    if allowed_ids is not None:
-        # Postgrest in_() 의 IN 절 길이 한계 회피용 청크 처리는 5000 이하면 한 번에 가능
-        query = query.in_("id", list(allowed_ids))
-    res = exec_with_retry(query)
-    return {"count": res.count or 0}
+    if allowed is None:
+        return {"count": exec_with_retry(base_q()).count or 0}
+
+    # IN 절 URL 길이 한계 회피 — 500개씩 청크로 count 합산.
+    # 청크 간 ID 가 서로 겹치지 않게 분할하므로 단순 합산이 정답과 일치.
+    total = 0
+    CHUNK = 500
+    ids_list = list(allowed)
+    for i in range(0, len(ids_list), CHUNK):
+        res = exec_with_retry(base_q().in_("id", ids_list[i:i + CHUNK]))
+        total += res.count or 0
+    return {"count": total}
+
+
+@router.get("/region-center")
+def region_center(
+    sido: str | None = Query(default=None),
+    sigungu: str | None = Query(default=None),
+    dong: str | None = Query(default=None),
+) -> dict:
+    """sido/sigungu/dong 만으로 필터링한 식당들의 평균 좌표.
+
+    채널/카테고리/이름검색 같은 비-지역 필터는 의도적으로 제외 — 지도가 다른 필터에 따라
+    움직이지 않도록 '지역 자체' 의 안정된 중심을 제공.
+    """
+    if not sido:
+        return {"lat": None, "lng": None}
+    sb = get_anon_client()
+    base = sb.table("restaurants").select("lat, lng").eq("sido", sido)
+    if sigungu:
+        base = base.eq("sigungu", sigungu)
+    if dong:
+        base = base.eq("dong", dong)
+
+    # Postgrest 1000행 한도 → 페이지네이션 누적
+    lat_sum = 0.0
+    lng_sum = 0.0
+    count = 0
+    start = 0
+    PAGE = 1000
+    while True:
+        chunk = exec_with_retry(base.range(start, start + PAGE - 1)).data or []
+        for r in chunk:
+            if r.get("lat") is not None and r.get("lng") is not None:
+                lat_sum += float(r["lat"])
+                lng_sum += float(r["lng"])
+                count += 1
+        if len(chunk) < PAGE:
+            break
+        start += PAGE
+
+    if count == 0:
+        return {"lat": None, "lng": None}
+    return {"lat": lat_sum / count, "lng": lng_sum / count}
 
 
 @router.get("/regions")
@@ -133,22 +188,32 @@ def list_regions() -> list[dict]:
 
 
 @router.get("/top")
-def top_restaurants(limit: int = Query(default=10, le=50)) -> list[dict]:
+def top_restaurants(limit: int = Query(default=1000, le=1000)) -> list[dict]:
     sb = get_anon_client()
-    scores = sb.table("v_restaurant_score").select("*").order("net_score", desc=True).limit(limit).execute().data or []
+    scores = exec_with_retry(
+        sb.table("v_restaurant_score").select("*").order("likes", desc=True).order("net_score", desc=True).limit(limit)
+    ).data or []
     if not scores:
         return []
     ids = [s["restaurant_id"] for s in scores]
-    details = sb.table("restaurants").select("*").in_("id", ids).execute().data or []
+    details = exec_with_retry(sb.table("restaurants").select("*").in_("id", ids)).data or []
     by_id = {d["id"]: d for d in details}
     return [{**by_id[s["restaurant_id"]], **s} for s in scores if s["restaurant_id"] in by_id]
 
 
 @router.get("/{restaurant_id}")
 def get_restaurant(restaurant_id: int) -> dict | None:
+    """식당 1건 + likes/dislikes. 자세히보기 페이지 + 핀 모달의 식당 카운터 용."""
     sb = get_anon_client()
-    row = sb.table("restaurants").select("*").eq("id", restaurant_id).single().execute()
-    return row.data
+    rows = exec_with_retry(sb.table("restaurants").select("*").eq("id", restaurant_id)).data or []
+    if not rows:
+        return None
+    row = rows[0]
+    score_rows = exec_with_retry(
+        sb.table("v_restaurant_score").select("likes, dislikes, net_score").eq("restaurant_id", restaurant_id)
+    ).data or []
+    s = score_rows[0] if score_rows else {}
+    return {**row, "likes": s.get("likes", 0), "dislikes": s.get("dislikes", 0), "net_score": s.get("net_score", 0)}
 
 
 class IdsBody(BaseModel):
@@ -196,20 +261,39 @@ def top_appearance(restaurant_id: int) -> dict | None:
 
 @router.get("/{restaurant_id}/top-appearances")
 def top2_appearances(restaurant_id: int) -> list[dict]:
-    """좋아요 최다 영상 2개 (동률은 최신순) — 지도 핀 클릭 모달용."""
+    """좋아요 최다 영상 2개 (동률은 최신순) — 지도 핀 클릭 모달용.
+
+    각 행의 channels 객체에 채널 likes/dislikes 도 enrich — 모달 안에서 채널 투표 카운트 표시용.
+    """
     sb = get_anon_client()
-    rows = sb.table("v_top2_appearances").select("*").eq("restaurant_id", restaurant_id).order("rn").execute().data or []
+    rows = exec_with_retry(
+        sb.table("v_top2_appearances").select("*").eq("restaurant_id", restaurant_id).order("rn")
+    ).data or []
     if not rows:
         return []
     ids = [r["appearance_id"] for r in rows]
-    full = sb.table("appearances").select("*, channels(*)").in_("id", ids).execute().data or []
+    full = exec_with_retry(
+        sb.table("appearances").select("*, channels(*)").in_("id", ids)
+    ).data or []
     full_by_id = {r["id"]: r for r in full}
+
+    # 채널 score 보강
+    ch_ids = list({f["channel_id"] for f in full if f.get("channel_id") is not None})
+    ch_scores = exec_with_retry(
+        sb.table("v_channel_score").select("channel_id, likes, dislikes").in_("channel_id", ch_ids)
+    ).data or [] if ch_ids else []
+    ch_score_map = {s["channel_id"]: s for s in ch_scores}
+
     # rn 순서를 유지하면서 점수 정보까지 합치기
     result = []
     for r in rows:
         f = full_by_id.get(r["appearance_id"])
-        if f:
-            result.append({**f, "likes": r["likes"], "dislikes": r["dislikes"], "net_score": r["net_score"]})
+        if not f:
+            continue
+        ch = f.get("channels") or {}
+        cs = ch_score_map.get(f.get("channel_id"), {})
+        f["channels"] = {**ch, "likes": cs.get("likes", 0), "dislikes": cs.get("dislikes", 0)}
+        result.append({**f, "likes": r["likes"], "dislikes": r["dislikes"], "net_score": r["net_score"]})
     return result
 
 

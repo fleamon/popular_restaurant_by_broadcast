@@ -25,8 +25,12 @@ const CUISINES = [
   "베이커리", "디저트", "아시안", "패스트푸드",
 ];
 
+// 필터 한 줄에 모두 들어가도록 작은 사이즈 + shrink-0. 좁은 화면은 horizontal scroll 로 처리.
 const SELECT_CLS =
-  "rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold text-black focus:border-brand focus:outline-none";
+  "shrink-0 rounded-md border border-neutral-200 bg-white px-2 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none";
+
+const INPUT_CLS =
+  "min-w-[140px] flex-1 rounded-md border border-neutral-200 bg-white px-2 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none";
 
 export default function HomePage() {
   const router = useRouter();
@@ -149,18 +153,40 @@ export default function HomePage() {
     api.listRestaurants(params).then(setRows).catch(() => setRows([]));
   }
 
-  // 필터에 따라 지도 중심 이동 — 필터가 있으면 결과 평균 좌표로, 없으면 default(서울시청)
-  const mapCenter = useMemo(() => {
-    if (!sido && !sigungu && !dong) return undefined;
-    const valid = rows.filter((r) => r.lat != null && r.lng != null);
-    if (valid.length === 0) return undefined;
-    const lat = valid.reduce((s, r) => s + (r.lat as number), 0) / valid.length;
-    const lng = valid.reduce((s, r) => s + (r.lng as number), 0) / valid.length;
-    return { lat, lng };
-  }, [rows, sido, sigungu, dong]);
+  // 지역 자체의 안정 중심점 — 백엔드가 sido/sigungu/dong 만으로 평균을 계산.
+  // 채널/카테고리/이름검색 같은 비-지역 필터가 바뀌어도 이 값은 변하지 않음 → 지도 안 흔들림.
+  const [regionCenter, setRegionCenter] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (!sido) { setRegionCenter(null); return; }
+    let cancelled = false;
+    api.regionCenter({ sido, sigungu: sigungu || undefined, dong: dong || undefined })
+      .then((r) => {
+        if (cancelled) return;
+        setRegionCenter(r.lat != null && r.lng != null ? { lat: r.lat, lng: r.lng } : null);
+      })
+      .catch(() => { if (!cancelled) setRegionCenter(null); });
+    return () => { cancelled = true; };
+  }, [sido, sigungu, dong]);
 
-  // 줌 레벨 — 좁은 필터일수록 더 확대
-  const mapLevel = dong ? 3 : sigungu ? 5 : sido ? 8 : undefined;
+  // 지도 중심 우선순위:
+  //   1) 식당이름 검색 결과가 정확히 1건 → 그 식당으로 (좌표 있는 경우)
+  //   2) 지역 필터 적용 → regionCenter
+  //   3) 그 외 → undefined (Map 컴포넌트 기본값 = 서울시청)
+  const mapCenter = useMemo(() => {
+    if (q && rows.length === 1 && rows[0].lat != null && rows[0].lng != null) {
+      return { lat: rows[0].lat, lng: rows[0].lng };
+    }
+    return regionCenter ?? undefined;
+  }, [q, rows, regionCenter]);
+
+  // 줌 레벨 — 좁은 필터일수록 더 확대. unique 1건이면 가장 가까운 줌.
+  const mapLevel = useMemo(() => {
+    if (q && rows.length === 1) return 3;
+    if (dong) return 3;
+    if (sigungu) return 5;
+    if (sido) return 8;
+    return undefined;
+  }, [q, rows, dong, sigungu, sido]);
 
   // 카카오톡 공유 — 현재 페이지 URL 그대로(필터 포함) + 필터 요약
   async function shareCurrent() {
@@ -206,8 +232,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 필터 라인 — 채널타입/채널명/시도/시군구/동/카테고리/이름검색 + 검색버튼 */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      {/* 필터 라인 — 채널타입/채널명/시도/시군구/동/카테고리/이름검색 + 검색버튼. 한 줄 유지 + 좁으면 가로 스크롤 */}
+      <div className="mb-4 flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
         <select value={channelType} onChange={(e) => setChannelType(e.target.value)} className={SELECT_CLS}>
           <option value="">채널 타입</option>
           {CHANNEL_TYPES.map((t) => (
@@ -276,7 +302,7 @@ export default function HomePage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && triggerSearch()}
-          className={`min-w-[200px] flex-1 ${SELECT_CLS}`}
+          className={INPUT_CLS}
         />
 
         <button

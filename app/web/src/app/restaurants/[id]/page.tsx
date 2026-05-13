@@ -3,8 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
+import VoteButton from "@/components/VoteButton";
 import { api, type Appearance, type ExternalInfo, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
+
+type VoteState = { likes: number; dislikes: number; myVote: 1 | -1 | null };
+type VoteMap = Record<number, VoteState>;
 
 export default function RestaurantDetailPage() {
   const params = useParams<{ id: string }>();
@@ -14,20 +18,68 @@ export default function RestaurantDetailPage() {
   const [apps, setApps] = useState<Appearance[]>([]);
   const [ext, setExt] = useState<ExternalInfo | null>(null);
 
+  // 투표 상태 — 식당/채널/영상 별로 (target_id → state). 같은 채널이 여러 영상에 등장해도 한 번 클릭 시 모두 동기화.
+  const [voteR, setVoteR] = useState<VoteMap>({});
+  const [voteC, setVoteC] = useState<VoteMap>({});
+  const [voteA, setVoteA] = useState<VoteMap>({});
+
   useEffect(() => {
     if (!id) return;
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-    // 세 호출 모두 개별 catch 로 unhandled rejection 방지 (FastAPI 미가동 등)
-    fetch(`${base}/restaurants/${id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((r) => setRestaurant(r))
+    // 식당 + 영상 + 외부 정보 fetch
+    api.getRestaurant(id)
+      .then((r) => {
+        setRestaurant(r);
+        if (r) {
+          setVoteR((prev) => ({
+            ...prev,
+            [r.id]: { likes: r.likes ?? 0, dislikes: r.dislikes ?? 0, myVote: prev[r.id]?.myVote ?? null },
+          }));
+        }
+      })
       .catch(() => setRestaurant(null));
     api.topAppearances(id)
-      .then((a) => setApps(a))
+      .then((apps) => {
+        setApps(apps);
+        // 영상/채널 score 를 vote state 에 반영
+        setVoteA((prev) => {
+          const next = { ...prev };
+          for (const a of apps) {
+            next[a.id] = { likes: a.likes ?? 0, dislikes: a.dislikes ?? 0, myVote: prev[a.id]?.myVote ?? null };
+          }
+          return next;
+        });
+        setVoteC((prev) => {
+          const next = { ...prev };
+          for (const a of apps) {
+            if (!a.channel_id) continue;
+            next[a.channel_id] = {
+              likes: a.channels?.likes ?? 0,
+              dislikes: a.channels?.dislikes ?? 0,
+              myVote: prev[a.channel_id]?.myVote ?? null,
+            };
+          }
+          return next;
+        });
+      })
       .catch(() => setApps([]));
     api.externalInfo(id)
       .then((e) => setExt(e))
       .catch(() => setExt(null));
+
+    // 내 투표 — 페이지 마운트 시 한 번 fetch. 비로그인은 401 → 무시.
+    const mergeMy = (setter: typeof setVoteR) => (mv: Record<string, 1 | -1>) => {
+      setter((prev) => {
+        const next = { ...prev };
+        for (const [idStr, v] of Object.entries(mv)) {
+          const k = Number(idStr);
+          next[k] = { likes: prev[k]?.likes ?? 0, dislikes: prev[k]?.dislikes ?? 0, myVote: v };
+        }
+        return next;
+      });
+    };
+    api.myVotes("restaurant").then(mergeMy(setVoteR)).catch(() => {});
+    api.myVotes("channel").then(mergeMy(setVoteC)).catch(() => {});
+    api.myVotes("appearance").then(mergeMy(setVoteA)).catch(() => {});
   }, [id]);
 
   if (!restaurant) return <div className="text-sm font-bold text-neutral-500">불러오는 중…</div>;
@@ -36,12 +88,24 @@ export default function RestaurantDetailPage() {
   const featured = apps[0] ?? null;
   const ytId = featured?.youtube_video_id ?? extractYouTubeId(featured?.source_url ?? "");
 
+  const rState = voteR[restaurant.id] ?? { likes: restaurant.likes ?? 0, dislikes: restaurant.dislikes ?? 0, myVote: null };
+
   return (
     <div className="space-y-5">
       <div>
         <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">{restaurant.current_name}</h1>
         <p className="mt-1 text-sm font-bold text-neutral-500">{restaurant.current_address}</p>
         {restaurant.cuisine && <p className="text-xs text-neutral-400">{restaurant.cuisine}</p>}
+        <div className="mt-2">
+          <VoteButton
+            target_type="restaurant"
+            target_id={restaurant.id}
+            initialLikes={rState.likes}
+            initialDislikes={rState.dislikes}
+            initialMyVote={rState.myVote}
+            onChange={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
+          />
+        </div>
       </div>
 
       {/* YouTube 임베드 */}
@@ -79,26 +143,55 @@ export default function RestaurantDetailPage() {
       <ShareBar restaurant={restaurant} featured={featured} ytId={ytId} />
 
       {/* 식당 정보 (네이버 플레이스) */}
-      <PlaceInfo restaurant={restaurant} ext={ext} />
+      <PlaceInfo
+        restaurant={restaurant}
+        ext={ext}
+        rState={rState}
+        onChangeR={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
+      />
 
       {/* 영상 목록 (좋아요순) */}
       <section>
         <h2 className="font-soft mb-2 text-xl font-bold text-brand">소개된 영상</h2>
         <ul className="space-y-2">
-          {apps.map((a) => (
-            <li key={a.id} className="rounded-lg border border-neutral-200 bg-white p-3">
-              <div className="text-xs font-bold text-neutral-500">{a.channels?.name}</div>
-              <div className="text-sm font-bold text-neutral-900">{a.episode_title}</div>
-              <div className="mt-1 text-xs text-neutral-400">
-                👍 {a.likes ?? 0} · 👎 {a.dislikes ?? 0} · {a.aired_at ?? ""}
-              </div>
-              {a.source_url && (
-                <a href={a.source_url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-bold text-brand">
-                  영상 보기 →
-                </a>
-              )}
-            </li>
-          ))}
+          {apps.map((a) => {
+            const aState = voteA[a.id] ?? { likes: a.likes ?? 0, dislikes: a.dislikes ?? 0, myVote: null };
+            const cState = voteC[a.channel_id] ?? { likes: a.channels?.likes ?? 0, dislikes: a.channels?.dislikes ?? 0, myVote: null };
+            return (
+              <li key={a.id} className="rounded-lg border border-neutral-200 bg-white p-3">
+                {/* 채널명 + 채널 투표 */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-neutral-500">{a.channels?.name}</span>
+                  <VoteButton
+                    target_type="channel"
+                    target_id={a.channel_id}
+                    initialLikes={cState.likes}
+                    initialDislikes={cState.dislikes}
+                    initialMyVote={cState.myVote}
+                    onChange={(next) => setVoteC((prev) => ({ ...prev, [a.channel_id]: next }))}
+                  />
+                </div>
+                <div className="mt-1 text-sm font-bold text-neutral-900">{a.episode_title}</div>
+                <div className="mt-1 text-xs text-neutral-400">{a.aired_at ?? ""}</div>
+                {/* 영상 투표 + 영상 보기 링크 */}
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <VoteButton
+                    target_type="appearance"
+                    target_id={a.id}
+                    initialLikes={aState.likes}
+                    initialDislikes={aState.dislikes}
+                    initialMyVote={aState.myVote}
+                    onChange={(next) => setVoteA((prev) => ({ ...prev, [a.id]: next }))}
+                  />
+                  {a.source_url && (
+                    <a href={a.source_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-brand">
+                      영상 보기 →
+                    </a>
+                  )}
+                </div>
+              </li>
+            );
+          })}
           {apps.length === 0 && (
             <li className="rounded-lg border border-dashed border-neutral-200 p-4 text-center text-xs text-neutral-400">
               영상이 없습니다.
@@ -130,14 +223,39 @@ function ExtLink({ href, className, children }: { href: string; className?: stri
 //   - 네이버 메뉴/리뷰/홈 외부 링크
 // summary 호출 실패(ext.naver===null)시에도 우리 DB 기본 정보(주소·전화·메모)는 렌더.
 // ─────────────────────────────────────────────────────────────────────
-function PlaceInfo({ restaurant, ext }: { restaurant: Restaurant; ext: ExternalInfo | null }) {
+function PlaceInfo({
+  restaurant,
+  ext,
+  rState,
+  onChangeR,
+}: {
+  restaurant: Restaurant;
+  ext: ExternalInfo | null;
+  rState: VoteState;
+  onChangeR: (next: VoteState) => void;
+}) {
   const naver = ext?.naver ?? null;
   const placeId = ext?.place_id ?? null;
   const images = (naver?.images?.images ?? []).slice(0, 6);
 
   return (
     <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-5">
-      <h2 className="font-soft text-xl font-bold text-brand">식당 정보</h2>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-soft text-xl font-bold text-brand">식당 정보</h2>
+          {/* 페이지 상단과 별도로 한 번 더 표시 — 카드 안에서도 어떤 식당인지 명확하게 */}
+          <p className="mt-1 text-base font-bold text-neutral-900">{restaurant.current_name}</p>
+          <p className="mt-0.5 text-xs text-neutral-500">{restaurant.current_address}</p>
+        </div>
+        <VoteButton
+          target_type="restaurant"
+          target_id={restaurant.id}
+          initialLikes={rState.likes}
+          initialDislikes={rState.dislikes}
+          initialMyVote={rState.myVote}
+          onChange={onChangeR}
+        />
+      </div>
 
       {/* 메타 칩 한 줄 — 카테고리 / 영업시간 */}
       <div className="flex flex-wrap gap-2 text-xs font-bold">

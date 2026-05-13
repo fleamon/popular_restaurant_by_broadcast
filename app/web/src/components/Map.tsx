@@ -8,7 +8,11 @@ import {
   useKakaoLoader,
 } from "react-kakao-maps-sdk";
 
+import VoteButton from "@/components/VoteButton";
 import { api, type Appearance, type Restaurant } from "@/lib/api";
+
+type MyVotes = Record<string, 1 | -1>;
+type VoteState = { likes: number; dislikes: number; myVote: 1 | -1 | null };
 
 function extractYouTubeId(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -39,6 +43,29 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [topApps, setTopApps] = useState<Appearance[]>([]);
   const [busy, setBusy] = useState(false);
+
+  // 투표 상태 — 타입별 (target_id → {likes, dislikes, myVote}).
+  // 같은 채널이 여러 영상에 등장해도 모든 VoteButton 인스턴스가 동일 source 에서 읽음 → 한 곳 클릭 시 다른 곳도 동기화.
+  const [voteR, setVoteR] = useState<Record<number, VoteState>>({});
+  const [voteC, setVoteC] = useState<Record<number, VoteState>>({});
+  const [voteA, setVoteA] = useState<Record<number, VoteState>>({});
+
+  // 페이지 마운트 시 내 투표 한 번에 fetch (3 타입). 비로그인은 401 → 빈 객체.
+  useEffect(() => {
+    const mergeMy = (setter: typeof setVoteR) => (mv: MyVotes) => {
+      setter((prev) => {
+        const next = { ...prev };
+        for (const [idStr, v] of Object.entries(mv)) {
+          const id = Number(idStr);
+          next[id] = { likes: prev[id]?.likes ?? 0, dislikes: prev[id]?.dislikes ?? 0, myVote: v };
+        }
+        return next;
+      });
+    };
+    api.myVotes("restaurant").then(mergeMy(setVoteR)).catch(() => {});
+    api.myVotes("channel").then(mergeMy(setVoteC)).catch(() => {});
+    api.myVotes("appearance").then(mergeMy(setVoteA)).catch(() => {});
+  }, []);
 
   // restaurant_id → 대표 appearance 의 핀 표시 정보(채널 썸네일 + 채널명 첫글자)
   type RepInfo = { channelName: string; channelThumb: string | null };
@@ -79,8 +106,48 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
     setSelected(r);
     setTopApps([]);
     setBusy(true);
+
+    // 식당 score 가 없으면 단건 fetch 해서 카운터 정확히 표시
+    api.getRestaurant(r.id).then((rest) => {
+      if (!rest) return;
+      setVoteR((prev) => ({
+        ...prev,
+        [r.id]: {
+          likes: rest.likes ?? 0,
+          dislikes: rest.dislikes ?? 0,
+          myVote: prev[r.id]?.myVote ?? null,  // 내 투표는 마운트 시 받은 값 유지
+        },
+      }));
+    }).catch(() => {});
+
     api.topAppearances(r.id)
-      .then((apps) => setTopApps(apps))
+      .then((apps) => {
+        setTopApps(apps);
+        // 영상/채널 score 를 vote state 에 반영. myVote 는 기존 유지.
+        setVoteA((prev) => {
+          const next = { ...prev };
+          for (const a of apps) {
+            next[a.id] = {
+              likes: a.likes ?? 0,
+              dislikes: a.dislikes ?? 0,
+              myVote: prev[a.id]?.myVote ?? null,
+            };
+          }
+          return next;
+        });
+        setVoteC((prev) => {
+          const next = { ...prev };
+          for (const a of apps) {
+            if (!a.channel_id) continue;
+            next[a.channel_id] = {
+              likes: a.channels?.likes ?? 0,
+              dislikes: a.channels?.dislikes ?? 0,
+              myVote: prev[a.channel_id]?.myVote ?? null,
+            };
+          }
+          return next;
+        });
+      })
       .catch(() => setTopApps([]))   // FastAPI 미가동/네트워크 오류 시 unhandled rejection 방지
       .finally(() => setBusy(false));
   }
@@ -122,6 +189,12 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
           appearances={topApps}
           loading={busy}
           onClose={() => { setSelected(null); setTopApps([]); }}
+          voteR={voteR}
+          voteC={voteC}
+          voteA={voteA}
+          setVoteR={setVoteR}
+          setVoteC={setVoteC}
+          setVoteA={setVoteA}
         />
       )}
     </div>
@@ -165,19 +238,35 @@ function ChannelPin({
 // ─────────────────────────────────────────────────────────────────────
 // 핀 클릭 오버레이 모달 — 음식점 정보 + 좋아요 최다 영상 2개
 // ─────────────────────────────────────────────────────────────────────
+type VoteMap = Record<number, VoteState>;
+type VoteMapSetter = React.Dispatch<React.SetStateAction<VoteMap>>;
+
 function PinModal({
   restaurant,
   appearances,
   loading,
   onClose,
+  voteR,
+  voteC,
+  voteA,
+  setVoteR,
+  setVoteC,
+  setVoteA,
 }: {
   restaurant: Restaurant;
   appearances: Appearance[];
   loading: boolean;
   onClose: () => void;
+  voteR: VoteMap;
+  voteC: VoteMap;
+  voteA: VoteMap;
+  setVoteR: VoteMapSetter;
+  setVoteC: VoteMapSetter;
+  setVoteA: VoteMapSetter;
 }) {
+  const rState = voteR[restaurant.id] ?? { likes: restaurant.likes ?? 0, dislikes: restaurant.dislikes ?? 0, myVote: null };
   return (
-    <div className="absolute right-4 top-4 z-10 w-[320px] rounded-2xl bg-white shadow-2xl ring-1 ring-neutral-200">
+    <div className="absolute right-4 top-4 z-10 w-[340px] rounded-2xl bg-white shadow-2xl ring-1 ring-neutral-200">
       <button
         onClick={onClose}
         aria-label="닫기"
@@ -185,9 +274,20 @@ function PinModal({
       >
         ×
       </button>
-      <div className="p-4">
+      <div className="p-4 pr-10">
         <div className="text-base font-bold text-brand">{restaurant.current_name}</div>
         <div className="mt-1 text-xs text-neutral-500">{restaurant.current_address}</div>
+        {/* 식당 투표 */}
+        <div className="mt-2">
+          <VoteButton
+            target_type="restaurant"
+            target_id={restaurant.id}
+            initialLikes={rState.likes}
+            initialDislikes={rState.dislikes}
+            initialMyVote={rState.myVote}
+            onChange={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
+          />
+        </div>
         <div className="mt-3 flex gap-2">
           <a
             href={restaurant.naver_map_url ?? `https://map.naver.com/v5/search/${encodeURIComponent(restaurant.current_name)}`}
@@ -216,7 +316,16 @@ function PinModal({
           <p className="p-4 text-xs text-neutral-400">아직 등록된 영상이 없습니다.</p>
         ) : (
           <ul className="divide-y divide-neutral-100">
-            {appearances.map((a) => <VideoRow key={a.id} app={a} />)}
+            {appearances.map((a) => (
+              <VideoRow
+                key={a.id}
+                app={a}
+                appState={voteA[a.id] ?? { likes: a.likes ?? 0, dislikes: a.dislikes ?? 0, myVote: null }}
+                chState={voteC[a.channel_id] ?? { likes: a.channels?.likes ?? 0, dislikes: a.channels?.dislikes ?? 0, myVote: null }}
+                onChangeApp={(next) => setVoteA((prev) => ({ ...prev, [a.id]: next }))}
+                onChangeCh={(next) => setVoteC((prev) => ({ ...prev, [a.channel_id]: next }))}
+              />
+            ))}
           </ul>
         )}
       </div>
@@ -233,41 +342,74 @@ function PinModal({
   );
 }
 
-function VideoRow({ app }: { app: Appearance }) {
+function VideoRow({
+  app,
+  appState,
+  chState,
+  onChangeApp,
+  onChangeCh,
+}: {
+  app: Appearance;
+  appState: VoteState;
+  chState: VoteState;
+  onChangeApp: (next: VoteState) => void;
+  onChangeCh: (next: VoteState) => void;
+}) {
   const ytId = app.youtube_video_id ?? extractYouTubeId(app.source_url);
   const url = app.source_url ?? (ytId ? `https://www.youtube.com/watch?v=${ytId}` : null);
   // 자세히보기 페이지의 YouTube 임베드와 동일한 영상의 썸네일을 사용.
   const thumb = app.thumbnail_url ?? ytThumbUrl(ytId, "mqdefault");
-  const Wrap = url
-    ? ({ children }: { children: React.ReactNode }) => (
-        <a href={url} target="_blank" rel="noreferrer" className="block hover:bg-brand-surface">
-          {children}
-        </a>
-      )
-    : ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   return (
-    <li>
-      <Wrap>
-        <div className="flex gap-3 p-3">
-          {thumb ? (
+    <li className="p-3">
+      <div className="flex gap-3">
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer" className="shrink-0">
+            {thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={thumb} alt="" className="h-14 w-20 rounded object-cover" />
+            ) : (
+              <div className="h-14 w-20 rounded bg-neutral-100" />
+            )}
+          </a>
+        ) : (
+          thumb ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={thumb} alt="" className="h-14 w-20 shrink-0 rounded object-cover" />
           ) : (
             <div className="h-14 w-20 shrink-0 rounded bg-neutral-100" />
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-bold text-neutral-500 truncate">
-              {app.channels?.name ?? "—"}
-            </div>
-            <div className="text-sm font-bold text-neutral-900 line-clamp-2">
-              {app.episode_title ?? "에피소드"}
-            </div>
-            <div className="text-xs text-neutral-400">
-              👍 {app.likes ?? 0}
-            </div>
+          )
+        )}
+        <div className="flex-1 min-w-0">
+          {/* 채널명 + 채널 투표 */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-xs font-bold text-neutral-500">{app.channels?.name ?? "—"}</span>
+            <VoteButton
+              target_type="channel"
+              target_id={app.channel_id}
+              initialLikes={chState.likes}
+              initialDislikes={chState.dislikes}
+              initialMyVote={chState.myVote}
+              onChange={onChangeCh}
+            />
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm font-bold text-neutral-900">
+            {url ? (
+              <a href={url} target="_blank" rel="noreferrer" className="hover:text-brand">{app.episode_title ?? "에피소드"}</a>
+            ) : (app.episode_title ?? "에피소드")}
+          </div>
+          {/* 영상 투표 */}
+          <div className="mt-1">
+            <VoteButton
+              target_type="appearance"
+              target_id={app.id}
+              initialLikes={appState.likes}
+              initialDislikes={appState.dislikes}
+              initialMyVote={appState.myVote}
+              onChange={onChangeApp}
+            />
           </div>
         </div>
-      </Wrap>
+      </div>
     </li>
   );
 }
