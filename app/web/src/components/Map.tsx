@@ -25,6 +25,23 @@ function ytThumbUrl(id: string | null, size: "default" | "mqdefault" | "hqdefaul
   return id ? `https://img.youtube.com/vi/${id}/${size}.jpg` : null;
 }
 
+/** Kakao 지도 인스턴스 → bounds 4개 좌표를 부모에 전달. onCreate / onIdle 양쪽에서 재사용. */
+type KakaoMapInstance = {
+  getBounds: () => {
+    getSouthWest: () => { getLat: () => number; getLng: () => number };
+    getNorthEast: () => { getLat: () => number; getLng: () => number };
+  };
+};
+function notify(
+  map: KakaoMapInstance,
+  cb: (b: { sw_lat: number; sw_lng: number; ne_lat: number; ne_lng: number }) => void,
+) {
+  const b = map.getBounds();
+  const sw = b.getSouthWest();
+  const ne = b.getNorthEast();
+  cb({ sw_lat: sw.getLat(), sw_lng: sw.getLng(), ne_lat: ne.getLat(), ne_lng: ne.getLng() });
+}
+
 type Props = {
   restaurants: Restaurant[];
   center?: { lat: number; lng: number };
@@ -169,19 +186,14 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
         style={{ width: "100%", height: "100%" }}
         // 지도 배경(핀이 아닌 영역) 클릭 시 열린 모달 닫기. 핀 클릭은 CustomOverlay 의 React onClick 이 잡으니 영향 없음.
         onClick={() => setSelected(null)}
-        // 사용자 조작 완료(이동/줌 idle) → viewport bounds 부모에게 통지 → 그 영역만 fetch.
-        onIdle={(map) => {
+        // 지도 인스턴스 생성 직후 즉시 첫 bounds 통지 — onIdle 까지 기다리지 않고 viewport 핀 바로 보임.
+        // 가끔 onCreate 시점에 getBounds 가 미정이라 다음 tick 으로 한 번 미룸.
+        onCreate={(map) => {
           if (!onBoundsChanged) return;
-          const b = map.getBounds();
-          const sw = b.getSouthWest();
-          const ne = b.getNorthEast();
-          onBoundsChanged({
-            sw_lat: sw.getLat(),
-            sw_lng: sw.getLng(),
-            ne_lat: ne.getLat(),
-            ne_lng: ne.getLng(),
-          });
+          setTimeout(() => notify(map, onBoundsChanged), 0);
         }}
+        // 사용자 조작 완료(이동/줌 idle) → viewport bounds 부모에게 통지 → 그 영역만 fetch.
+        onIdle={(map) => { if (onBoundsChanged) notify(map, onBoundsChanged); }}
       >
         {pinnable.map((r) => {
           const rep = restaurantRep.get(r.id);

@@ -140,23 +140,32 @@ export default function HomePage() {
   // 필터 변경 시 페이지 1로 리셋 — 빈 페이지 보이지 않도록
   useEffect(() => { setPage(1); }, [channelType, channelId, sido, sigungu, dong, cuisine, q, view]);
 
+  // count 는 항상 (필터 기준) — view/bounds 와 무관
   useEffect(() => {
-    // 지도 뷰: viewport bounds 안의 식당만 fetch. bounds 미정 시 첫 fetch 는 limit 1000 fallback
-    // (onIdle 가 발화하는 동안 화면이 비어보이지 않도록).
-    // list/grid 뷰: 좋아요 desc + 이름 asc 정렬한 페이지만 fetch.
+    const t = setTimeout(() => {
+      api.countRestaurants(params).then((r) => setTotalCount(r.count)).catch(() => setTotalCount(null));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [params]);
+
+  // rows: view 따라 분기. map 뷰는 bounds 가 잡힌 후 fetch (onCreate 즉시 발화).
+  useEffect(() => {
     let fetchParams: Record<string, string | number | undefined>;
     if (view === "map") {
-      fetchParams = bounds
-        ? { ...params, sw_lat: bounds.sw_lat, sw_lng: bounds.sw_lng, ne_lat: bounds.ne_lat, ne_lng: bounds.ne_lng }
-        : { ...params, limit: 1000 };
+      if (!bounds) return; // onCreate 통지 대기 — 짧은 첫 깜빡임은 감수
+      fetchParams = {
+        ...params,
+        sw_lat: bounds.sw_lat,
+        sw_lng: bounds.sw_lng,
+        ne_lat: bounds.ne_lat,
+        ne_lng: bounds.ne_lng,
+      };
     } else {
       fetchParams = { ...params, page, page_size: pageSize, sort: "likes_desc" };
     }
-    const doFetch = () => {
+    const t = setTimeout(() => {
       api.listRestaurants(fetchParams).then(setRows).catch(() => setRows([]));
-      api.countRestaurants(params).then((r) => setTotalCount(r.count)).catch(() => setTotalCount(null));
-    };
-    const t = setTimeout(doFetch, 200);
+    }, 200);
     return () => clearTimeout(t);
   }, [params, view, page, pageSize, bounds]);
 
