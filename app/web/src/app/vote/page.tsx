@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import RankingList, { Pagination } from "@/components/RankingList";
 import VoteButton from "@/components/VoteButton";
+import PageHeader from "@/components/ui/PageHeader";
 import { api, type AppearanceScore, type RankingRow } from "@/lib/api";
 
 type MyVotes = Record<string, 1 | -1>;
@@ -44,7 +45,7 @@ export default function VotePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">투표 · 랭킹</h1>
+      <PageHeader title="투표 · 랭킹" />
 
       {/* 인기 급상승 영상 — 최근 7일 좋아요 가중치 */}
       <TrendingSection rows={trending} />

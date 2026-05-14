@@ -1,9 +1,10 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type Tab = { href: string; label: string };
+type Tab = { href: Route; label: string };
 
 // '검색' 탭이 홈("/") 화면을 겸한다.
 const BASE_TABS: Tab[] = [
