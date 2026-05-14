@@ -44,10 +44,16 @@ export default function RequestPage() {
   const [rows, setRows] = useState<RequestSummary[]>([]);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // 필터 — superadmin 만 UI 노출. 비어있으면 전체.
+  const [typeFilter, setTypeFilter] = useState<RequestType | "">("");
+  const [statusFilter, setStatusFilter] = useState<RequestStatus | "">("");
 
   useEffect(() => {
-    api.listRequests().then(setRows).catch(() => setRows([]));
-  }, [reloadKey]);
+    api.listRequests({
+      type: typeFilter || undefined,
+      status: statusFilter || undefined,
+    }).then(setRows).catch(() => setRows([]));
+  }, [reloadKey, typeFilter, statusFilter]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -73,6 +79,10 @@ export default function RequestPage() {
         expandedId={expandedId}
         onToggle={(id) => setExpandedId((cur) => (cur === id ? null : id))}
         onChanged={() => setReloadKey((k) => k + 1)}
+        typeFilter={typeFilter}
+        statusFilter={statusFilter}
+        onChangeTypeFilter={setTypeFilter}
+        onChangeStatusFilter={setStatusFilter}
       />
     </div>
   );
@@ -298,6 +308,7 @@ function SimpleForm({ type, onCreated }: { type: "bug" | "etc"; onCreated: () =>
 // ───────────────────────────────────────────────────────────────────
 function RequestListSection({
   rows, loggedIn, superadmin, expandedId, onToggle, onChanged,
+  typeFilter, statusFilter, onChangeTypeFilter, onChangeStatusFilter,
 }: {
   rows: RequestSummary[];
   loggedIn: boolean;
@@ -305,6 +316,10 @@ function RequestListSection({
   expandedId: number | null;
   onToggle: (id: number) => void;
   onChanged: () => void;
+  typeFilter: RequestType | "";
+  statusFilter: RequestStatus | "";
+  onChangeTypeFilter: (v: RequestType | "") => void;
+  onChangeStatusFilter: (v: RequestStatus | "") => void;
 }) {
   // 공지사항은 항상 최상단 (백엔드에서 이미 정렬되어 옴) + 10개씩 페이지네이션
   const [page, setPage] = useState(1);
@@ -347,7 +362,34 @@ function RequestListSection({
     <section className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-soft text-xl font-bold text-brand">요청 목록</h2>
-        <div className="flex items-center gap-3 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
+          {/* superadmin 전용 — 유형/상태 필터 selectbox */}
+          {superadmin && (
+            <>
+              <select
+                value={typeFilter}
+                onChange={(e) => onChangeTypeFilter(e.target.value as RequestType | "")}
+                className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-neutral-700"
+              >
+                <option value="">유형 — 전체</option>
+                <option value="channel_add">채널 추가요청</option>
+                <option value="admin_request">관리자 요청</option>
+                <option value="bug">버그 제보</option>
+                <option value="etc">기타 요청</option>
+                <option value="notice">공지사항</option>
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => onChangeStatusFilter(e.target.value as RequestStatus | "")}
+                className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-neutral-700"
+              >
+                <option value="">상태 — 전체</option>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </>
+          )}
           {superadmin && selected.size > 0 && (
             <button
               type="button"

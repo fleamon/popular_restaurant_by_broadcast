@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from ..deps import require_admin
+from ..deps import require_admin, require_superadmin
 from ..services.supabase_client import exec_with_retry, fetch_all, get_anon_client, get_service_client
 
 
@@ -447,7 +447,7 @@ def create_restaurant(body: RestaurantPayload, user: dict = Depends(require_admi
     return {"id": rid}
 
 
-# ─── 좌표 보정 (admin/superadmin) ────────────────────────────────────
+# ─── 좌표 보정 (superadmin 전용) ─────────────────────────────────────
 class GeoUpdate(BaseModel):
     lat: float
     lng: float
@@ -457,7 +457,7 @@ class GeoUpdate(BaseModel):
 
 
 @router.patch("/{restaurant_id}/geo")
-def update_geo(restaurant_id: int, body: GeoUpdate, user: dict = Depends(require_admin)) -> dict:
+def update_geo(restaurant_id: int, body: GeoUpdate, _: dict = Depends(require_superadmin)) -> dict:
     """주소 → 좌표 변환 결과(lat/lng + 시/구/동)를 한 번에 반영. 다른 필드는 건드리지 않음."""
     sb = get_service_client()
     sb.table("restaurants").update(body.model_dump(exclude_none=True)).eq("id", restaurant_id).execute()

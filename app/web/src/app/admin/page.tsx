@@ -800,20 +800,22 @@ function RestaurantInput({ me, channelsRevision }: { me: MeResponse; channelsRev
           : "superadmin 은 모든 채널에 등록할 수 있고, 필요하면 새 채널을 즉시 추가할 수 있습니다."}
       </p>
 
-      {/* 좌표 일괄 보정 — 좌표가 비어있는 기존 행을 카카오 Geocoder 로 채워 지도에 핀이 뜨도록 함 */}
-      <div className="flex items-center gap-3 rounded-xl border border-dashed border-brand bg-brand-surface p-3">
-        <button
-          type="button"
-          onClick={runBackfill}
-          disabled={backfilling}
-          className="rounded-md bg-brand px-3 py-2 text-sm font-bold text-brand-fg hover:bg-brand-hover disabled:opacity-50"
-        >
-          {backfilling ? "보정 중…" : "🌏 기존 좌표 보정"}
-        </button>
-        <span className="text-xs font-bold" style={{ color: "rgb(80 95 130)" }}>
-          {backfillMsg ?? "lat/lng 가 비어있는 맛집을 카카오 지도 주소검색으로 일괄 채웁니다"}
-        </span>
-      </div>
+      {/* 좌표 일괄 보정 — superadmin 전용 (대량 PATCH 라 일반 admin 에겐 노출 안 함) */}
+      {me.role === "superadmin" && (
+        <div className="flex items-center gap-3 rounded-xl border border-dashed border-brand bg-brand-surface p-3">
+          <button
+            type="button"
+            onClick={runBackfill}
+            disabled={backfilling}
+            className="rounded-md bg-brand px-3 py-2 text-sm font-bold text-brand-fg hover:bg-brand-hover disabled:opacity-50"
+          >
+            {backfilling ? "보정 중…" : "🌏 기존 좌표 보정"}
+          </button>
+          <span className="text-xs font-bold" style={{ color: "rgb(80 95 130)" }}>
+            {backfillMsg ?? "lat/lng 가 비어있는 맛집을 카카오 지도 주소검색으로 일괄 채웁니다"}
+          </span>
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-3 rounded-xl border border-neutral-200 bg-white p-5">
         <Field label="채널" required>
