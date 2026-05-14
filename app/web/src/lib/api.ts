@@ -15,7 +15,19 @@ async function request<T>(path: string, init?: RequestInit, withAuth = false): P
     const token = data.session?.access_token;
     if (token) headers.authorization = `Bearer ${token}`;
   }
-  const res = await fetch(`${BASE}${path}`, { ...init, headers, cache: "no-store" });
+  let res = await fetch(`${BASE}${path}`, { ...init, headers, cache: "no-store" });
+  // 401 → session 만료/직후 race 가능. 한 번만 refresh 시도 후 재호출.
+  if (res.status === 401 && withAuth) {
+    try {
+      const sb = getSupabaseBrowser();
+      const { data } = await sb.auth.refreshSession();
+      const token = data.session?.access_token;
+      if (token) {
+        headers.authorization = `Bearer ${token}`;
+        res = await fetch(`${BASE}${path}`, { ...init, headers, cache: "no-store" });
+      }
+    } catch { /* refresh 실패 — 원래 401 그대로 던짐 */ }
+  }
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
   return res.json() as Promise<T>;
 }
