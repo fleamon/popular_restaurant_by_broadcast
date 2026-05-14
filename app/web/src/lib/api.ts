@@ -131,6 +131,32 @@ export const api = {
   ingestChannel: (handle: string, max_videos: number) =>
     streamSSE<IngestEvent>(`/admin/ingest-channel`, { handle, max_videos }),
 
+  // requests (요청 게시판)
+  listRequests: (params: { status?: string; type?: string } = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
+    const qstr = qs.toString();
+    return request<RequestSummary[]>(`/requests${qstr ? `?${qstr}` : ""}`, undefined, true);
+    // 로그인 안 해도 됨 — withAuth 가 토큰 없으면 헤더 안 붙임. is_mine 은 false 로 옴.
+  },
+  getRequest: (id: number) =>
+    request<RequestDetail>(`/requests/${id}`, undefined, true),
+  createRequest: (body: CreateRequestBody) =>
+    request<{ id: number }>(`/requests`, { method: "POST", body: JSON.stringify(body) }, true),
+  updateRequestStatus: (id: number, status: RequestStatus) =>
+    request<{ ok: boolean }>(`/requests/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, true),
+  deleteRequest: (id: number) =>
+    request<{ ok: boolean }>(`/requests/${id}`, { method: "DELETE" }, true),
+  bulkDeleteRequests: (ids: number[]) =>
+    request<{ ok: boolean; deleted: number }>(
+      `/requests/bulk-delete`, { method: "POST", body: JSON.stringify({ ids }) }, true),
+  grantRequestChannel: (id: number) =>
+    request<{ ok: boolean; channel: string; added: boolean; role_upgraded: boolean; user: string | null }>(
+      `/requests/${id}/grant-channel`, { method: "POST" }, true),
+  listRequestComments: (id: number) =>
+    request<RequestComment[]>(`/requests/${id}/comments`, undefined, true),
+  createRequestComment: (id: number, body_text: string) =>
+    request<{ id: number }>(`/requests/${id}/comments`, { method: "POST", body: JSON.stringify({ body: body_text }) }, true),
+
   // users (superadmin)
   listUsers: (q: string, page: number, pageSize = 20) => {
     const qs = new URLSearchParams({
@@ -258,6 +284,59 @@ export type UsersListResponse = {
   total: number;
   page: number;
   page_size: number;
+};
+
+// 요청 게시판
+export type RequestType = "channel_add" | "admin_request" | "bug" | "etc" | "notice";
+export type RequestStatus = "요청" | "처리중" | "완료" | "반려";
+export const REQUEST_TYPE_LABEL: Record<RequestType, string> = {
+  channel_add:   "채널 추가요청",
+  admin_request: "관리자 요청",
+  bug:           "버그 제보",
+  etc:           "기타 요청",
+  notice:        "공지사항",
+};
+
+export type RequestSummary = {
+  id: number;
+  type: RequestType;
+  status: RequestStatus;
+  title: string;
+  channel_id: number | null;
+  author_nickname: string | null;
+  created_at: string;
+  is_mine: boolean;
+};
+
+export type RequestDetail = RequestSummary & {
+  author_id: number;
+  content: string | null;
+  channel_type: string | null;
+  channel_url: string | null;
+  channel_name: string | null;
+  can_manage: boolean;
+};
+
+export type CreateRequestBody = {
+  type: RequestType;
+  title: string;
+  content?: string | null;
+  channel_type?: "tv" | "youtube" | "blog" | "other" | null;
+  channel_url?: string | null;
+  channel_id?: number | null;
+};
+
+// 공지사항 시각 강조용 — 부드러운 골드 톤
+export const NOTICE_STYLE = { color: "rgb(180 130 30)", bg: "rgb(255 248 220)" } as const;
+
+export type RequestComment = {
+  id: number;
+  request_id: number;
+  author_id: number;
+  body: string;
+  created_at: string;
+  author_nickname: string | null;
+  author_role: "superadmin" | "admin" | "user" | null;
 };
 
 export type UserUpdateBody = {
