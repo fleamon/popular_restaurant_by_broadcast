@@ -213,15 +213,17 @@ function DetailBody({ detail }: { detail: RequestDetail }) {
     rows.push({ label: "관리요청 채널", value: detail.channel_name ?? "—" });
     rows.push({ label: "내용", value: <span className="whitespace-pre-line">{detail.content ?? "—"}</span> });
   } else if (detail.type === "restaurant_edit") {
-    const p = detail.payload ?? {};
-    rows.push({ label: "맛집", value: detail.restaurant_id ?? "—" });
-    rows.push({ label: "영상", value: detail.appearance_id ?? "—" });
-    rows.push({ label: "변경 사항", value: <PayloadDiff payload={p} /> });
+    rows.push({ label: "변경 사항", value: <PayloadDiff payload={detail.payload ?? {}} /> });
   } else if (detail.type === "restaurant_delete") {
-    const reason = detail.payload?.reason;
-    rows.push({ label: "맛집", value: detail.restaurant_id ?? "—" });
-    rows.push({ label: "영상", value: detail.appearance_id ?? "—" });
-    rows.push({ label: "사유", value: <span className="whitespace-pre-line">{reason || "—"}</span> });
+    const reason = detail.payload?.reason?.trim();
+    rows.push({
+      label: "삭제 사유",
+      value: (
+        <div className="rounded-md border border-red-200 bg-red-50 p-2 text-sm font-bold text-neutral-900 whitespace-pre-line">
+          {reason || <span className="text-neutral-400">(사유 없음)</span>}
+        </div>
+      ),
+    });
   } else {
     rows.push({ label: "내용", value: <span className="whitespace-pre-line">{detail.content ?? "—"}</span> });
   }
@@ -239,24 +241,51 @@ function DetailBody({ detail }: { detail: RequestDetail }) {
   );
 }
 
+// 필드 키 → 한국어 라벨
+const FIELD_LABEL: Record<string, string> = {
+  current_name: "가게 이름", current_address: "주소", cuisine: "카테고리",
+  sido: "시/도", sigungu: "시/군/구", dong: "동/읍/면",
+  lat: "위도", lng: "경도",
+  naver_map_url: "네이버 지도 URL", kakao_map_url: "카카오 지도 URL",
+  naver_place_id: "네이버 place id", kakao_place_id: "카카오 place id",
+  phone: "전화", notes: "메모",
+  episode_title: "영상 제목", source_url: "영상 URL",
+  youtube_video_id: "YouTube ID", thumbnail_url: "썸네일 URL",
+  summary: "요약", aired_at: "방영일", channel_id: "채널",
+};
+const fieldLabel = (k: string) => FIELD_LABEL[k] ?? k;
+const fmtValue = (v: unknown) =>
+  v === null || v === undefined || v === ""
+    ? "—"
+    : typeof v === "string" ? v : JSON.stringify(v);
+
 function PayloadDiff({ payload }: { payload: NonNullable<RequestDetail["payload"]> }) {
-  const r = (payload.restaurant ?? {}) as Record<string, unknown>;
-  const a = (payload.appearance ?? {}) as Record<string, unknown>;
-  const lines: { tag: string; key: string; value: unknown }[] = [
-    ...Object.entries(r).map(([k, v]) => ({ tag: "맛집", key: k, value: v })),
-    ...Object.entries(a).map(([k, v]) => ({ tag: "영상", key: k, value: v })),
+  const rb = (payload.restaurant_before ?? {}) as Record<string, unknown>;
+  const ra = (payload.restaurant_after  ?? {}) as Record<string, unknown>;
+  const ab = (payload.appearance_before ?? {}) as Record<string, unknown>;
+  const aa = (payload.appearance_after  ?? {}) as Record<string, unknown>;
+  const rows: { group: string; key: string; before: unknown; after: unknown }[] = [
+    ...Object.keys(ra).map((k) => ({ group: "맛집", key: k, before: rb[k], after: ra[k] })),
+    ...Object.keys(aa).map((k) => ({ group: "영상", key: k, before: ab[k], after: aa[k] })),
   ];
-  if (lines.length === 0) return <span className="text-neutral-400">—</span>;
+  if (rows.length === 0) return <span className="text-neutral-400">—</span>;
   return (
-    <ul className="space-y-1 font-mono text-xs">
-      {lines.map((l, i) => (
-        <li key={i} className="flex gap-2">
-          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 font-bold text-neutral-700">{l.tag}</span>
-          <span className="shrink-0 font-bold text-neutral-500">{l.key}</span>
-          <span className="min-w-0 flex-1 break-all text-neutral-900">{l.value === null ? "∅(null)" : String(l.value)}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="overflow-hidden rounded-md border border-neutral-200 bg-white">
+      <div className="grid grid-cols-[4rem_7rem_1fr_1.25rem_1fr] items-center gap-2 border-b border-neutral-200 bg-neutral-50 px-2 py-1.5 text-[11px] font-bold uppercase tracking-wide text-neutral-500">
+        <span>구분</span><span>필드</span><span>변경 전</span><span aria-hidden/><span>변경 후</span>
+      </div>
+      <ul className="divide-y divide-neutral-100">
+        {rows.map((r, i) => (
+          <li key={i} className="grid grid-cols-[4rem_7rem_1fr_1.25rem_1fr] items-center gap-2 px-2 py-1.5 text-xs">
+            <span className="shrink-0 rounded bg-brand-surface px-1.5 py-0.5 text-center font-bold leading-none text-brand">{r.group}</span>
+            <span className="font-bold text-neutral-700">{fieldLabel(r.key)}</span>
+            <span className="min-w-0 break-words font-mono text-neutral-500 line-through decoration-neutral-300">{fmtValue(r.before)}</span>
+            <span aria-hidden className="text-center font-bold text-neutral-400">→</span>
+            <span className="min-w-0 break-words font-mono font-bold" style={{ color: "rgb(20 130 60)" }}>{fmtValue(r.after)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

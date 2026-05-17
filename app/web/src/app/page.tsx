@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Map from "@/components/Map";
 import Pagination from "@/components/Pagination";
@@ -44,12 +44,19 @@ export default function HomePage() {
   const sp = useSearchParams();
 
   // 필터 상태 — 초기값은 URL 쿼리스트링에서 (공유 링크 복원).
-  // 채널/지역 필터는 datalist + 자유 텍스트 입력 → 모두 문자열 state. 백엔드가 ilike 로 매칭.
+  // 채널명/시도/시군구/동읍면 은 datalist + 자유 텍스트 입력. 입력값(Input) 과 적용값(committed) 을 분리:
+  //  - Input: UI 표시용 raw 텍스트
+  //  - committed: 빈 값이거나 datalist 옵션과 정확 일치할 때만 갱신 → 이 값이 검색/지도 fetch 의 기준
+  // 효과: 타자 중간엔 핀이 흔들리지 않고, 옵션을 '선택' 했을 때만 결과 갱신.
   const [channelType, setChannelType] = useState<string>(sp.get("ct") ?? "");
+  const [channelNameInput, setChannelNameInput] = useState<string>(sp.get("cn") ?? "");
+  const [sidoInput,    setSidoInput]    = useState<string>(sp.get("sido") ?? "");
+  const [sigunguInput, setSigunguInput] = useState<string>(sp.get("sigungu") ?? "");
+  const [dongInput,    setDongInput]    = useState<string>(sp.get("dong") ?? "");
   const [channelName, setChannelName] = useState<string>(sp.get("cn") ?? "");
-  const [sido, setSido] = useState<string>(sp.get("sido") ?? "");
+  const [sido,    setSido]    = useState<string>(sp.get("sido") ?? "");
   const [sigungu, setSigungu] = useState<string>(sp.get("sigungu") ?? "");
-  const [dong, setDong] = useState<string>(sp.get("dong") ?? "");
+  const [dong,    setDong]    = useState<string>(sp.get("dong") ?? "");
   const [cuisine, setCuisine] = useState<string>(sp.get("cuisine") ?? "");
   const [q, setQ] = useState<string>(sp.get("q") ?? "");
 
@@ -72,13 +79,13 @@ export default function HomePage() {
   const pageSize = view === "list" ? LIST_PAGE_SIZE : view === "grid" ? GRID_PAGE_SIZE : 0;
 
   // sp 가 외부 네비게이션(홈/검색 탭 클릭 → '/' 이동)으로 변하면 state 도 동기화.
-  // 같은 값이면 setState 가 noop 이라 무한루프 없음.
+  // datalist 입력은 Input 만 갱신 → commit useEffect 가 옵션 일치 검사 후 committed 갱신.
   useEffect(() => {
     setChannelType(sp.get("ct") ?? "");
-    setChannelName(sp.get("cn") ?? "");
-    setSido(sp.get("sido") ?? "");
-    setSigungu(sp.get("sigungu") ?? "");
-    setDong(sp.get("dong") ?? "");
+    setChannelNameInput(sp.get("cn") ?? "");
+    setSidoInput(sp.get("sido") ?? "");
+    setSigunguInput(sp.get("sigungu") ?? "");
+    setDongInput(sp.get("dong") ?? "");
     setCuisine(sp.get("cuisine") ?? "");
     setQ(sp.get("q") ?? "");
   }, [sp]);
@@ -116,6 +123,41 @@ export default function HomePage() {
              .map((r) => r.dong as string),
     )).sort();
   }, [regions, sido, sigungu]);
+
+  // commit — 빈 값이거나 옵션 정확 일치 시에만 committed 값 갱신.
+  // 효과: 타자 중 partial 입력에는 핀/카운트/리스트 가 반응하지 않음. 옵션 선택 즉시 반영.
+  useEffect(() => {
+    if (!channelNameInput || filteredChannels.some((c) => c.name === channelNameInput)) {
+      setChannelName(channelNameInput);
+    }
+  }, [channelNameInput, filteredChannels]);
+  useEffect(() => {
+    if (!sidoInput || sidoOptions.includes(sidoInput)) setSido(sidoInput);
+  }, [sidoInput, sidoOptions]);
+  useEffect(() => {
+    if (!sigunguInput || sigunguOptions.includes(sigunguInput)) setSigungu(sigunguInput);
+  }, [sigunguInput, sigunguOptions]);
+  useEffect(() => {
+    if (!dongInput || dongOptions.includes(dongInput)) setDong(dongInput);
+  }, [dongInput, dongOptions]);
+
+  // cascading 리셋 — committed 가 실제로 변경됐을 때만 하위 Input 초기화.
+  // 마운트 시 URL 복원된 값은 보존되도록 ref 로 이전 값 추적.
+  const prevSidoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevSidoRef.current !== null && prevSidoRef.current !== sido) {
+      setSigunguInput("");
+      setDongInput("");
+    }
+    prevSidoRef.current = sido;
+  }, [sido]);
+  const prevSigunguRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevSigunguRef.current !== null && prevSigunguRef.current !== sigungu) {
+      setDongInput("");
+    }
+    prevSigunguRef.current = sigungu;
+  }, [sigungu]);
 
   // 어떤 필터든 하나라도 설정되어야 결과 조회
   const hasAnyFilter = !!(channelType || channelName || sido || sigungu || dong || cuisine || q);
@@ -273,11 +315,13 @@ export default function HomePage() {
           ))}
         </select>
 
-        {/* 채널명 — datalist + 자유 텍스트. 입력값을 channel_name_like 로 백엔드 ilike. */}
+        {/* 채널명 / 시도 / 시군구 / 동읍면 — datalist 자동완성.
+            입력은 Input state, 백엔드 fetch 는 committed 값 → 옵션을 '선택' 했을 때만 핀이 바뀜.
+            cascading 하위 초기화는 committed 변경 시 ref-based 로 처리. */}
         <input
           list="dl-channel"
-          value={channelName}
-          onChange={(e) => setChannelName(e.target.value)}
+          value={channelNameInput}
+          onChange={(e) => setChannelNameInput(e.target.value)}
           placeholder="채널명"
           className={`${INPUT_CLS} min-w-[160px]`}
         />
@@ -285,11 +329,10 @@ export default function HomePage() {
           {filteredChannels.map((c) => <option key={c.id} value={c.name} />)}
         </datalist>
 
-        {/* 시/도 — datalist + 자유 텍스트. 상위 변경 시 하위 초기화. */}
         <input
           list="dl-sido"
-          value={sido}
-          onChange={(e) => { setSido(e.target.value); setSigungu(""); setDong(""); }}
+          value={sidoInput}
+          onChange={(e) => setSidoInput(e.target.value)}
           placeholder="시도"
           className={`${INPUT_CLS} min-w-[120px]`}
         />
@@ -297,11 +340,10 @@ export default function HomePage() {
           {sidoOptions.map((s) => <option key={s} value={s} />)}
         </datalist>
 
-        {/* 시/군/구 — datalist + 자유 텍스트 */}
         <input
           list="dl-sigungu"
-          value={sigungu}
-          onChange={(e) => { setSigungu(e.target.value); setDong(""); }}
+          value={sigunguInput}
+          onChange={(e) => setSigunguInput(e.target.value)}
           placeholder="시/군/구"
           className={`${INPUT_CLS} min-w-[120px]`}
         />
@@ -309,11 +351,10 @@ export default function HomePage() {
           {sigunguOptions.map((s) => <option key={s} value={s} />)}
         </datalist>
 
-        {/* 동/읍/면 — datalist + 자유 텍스트 */}
         <input
           list="dl-dong"
-          value={dong}
-          onChange={(e) => setDong(e.target.value)}
+          value={dongInput}
+          onChange={(e) => setDongInput(e.target.value)}
           placeholder="동/읍/면"
           className={`${INPUT_CLS} min-w-[120px]`}
         />

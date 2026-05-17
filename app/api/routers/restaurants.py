@@ -673,12 +673,18 @@ def create_appearance_edit_request(
     if not _can_manage_channel(user, ch_name):
         raise HTTPException(status_code=403, detail="not your charge_channel")
 
-    rest_patch = _filter_fields(body.restaurant, _RESTAURANT_EDITABLE)
-    app_patch  = _filter_fields(body.appearance, _APPEARANCE_EDITABLE)
-    if not rest_patch and not app_patch:
+    rest_after = _filter_fields(body.restaurant, _RESTAURANT_EDITABLE)
+    app_after  = _filter_fields(body.appearance, _APPEARANCE_EDITABLE)
+    if not rest_after and not app_after:
         raise HTTPException(status_code=400, detail="변경된 값이 없습니다.")
 
-    rest_name = (row.get("restaurants") or {}).get("current_name") or "(맛집)"
+    # 이전 값 스냅샷 — 승인 UI 가 'before / after' 를 나란히 보여주기 위함.
+    # 요청 후 다른 admin 이 또 수정해도 요청자가 본 시점의 이전 값이 보존됨.
+    rest_row = row.get("restaurants") or {}
+    rest_before = {k: rest_row.get(k) for k in rest_after.keys()}
+    app_before  = {k: row.get(k)      for k in app_after.keys()}
+
+    rest_name = rest_row.get("current_name") or "(맛집)"
     title = (body.title or f"맛집/영상 수정 요청: {rest_name}").strip()[:100]
 
     res = exec_with_retry(sb.table("requests").insert({
@@ -687,7 +693,12 @@ def create_appearance_edit_request(
         "title":         title,
         "restaurant_id": row.get("restaurant_id"),
         "appearance_id": aid,
-        "payload":       {"restaurant": rest_patch, "appearance": app_patch},
+        "payload": {
+            "restaurant_before": rest_before,
+            "restaurant_after":  rest_after,
+            "appearance_before": app_before,
+            "appearance_after":  app_after,
+        },
     }))
     return {"id": (res.data[0] if res.data else {}).get("id")}
 

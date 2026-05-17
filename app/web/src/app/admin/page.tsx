@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 
 import ChannelIngest from "@/components/admin/ChannelIngest";
 import ChannelManagement from "@/components/admin/ChannelManagement";
-import RestaurantInput from "@/components/admin/RestaurantInput";
 import RestaurantManagement from "@/components/admin/RestaurantManagement";
+import RestaurantRequestApproval from "@/components/admin/RestaurantRequestApproval";
 import UserManagement from "@/components/admin/UserManagement";
 import { useMe } from "@/lib/me";
 import { isAdmin, isSuperadmin } from "@/lib/role";
@@ -18,7 +18,7 @@ import { isAdmin, isSuperadmin } from "@/lib/role";
 export default function AdminPage() {
   const { me, loading } = useMe();
   const [verifiedAdmin, setVerifiedAdmin] = useState(false);
-  // 회원관리/채널관리 등에서 채널 목록이 바뀌면 RestaurantInput 의 옵션을 즉시 갱신할 키
+  // 회원관리/채널관리 등에서 채널 목록이 바뀌면 RestaurantManagement 의 옵션을 즉시 갱신할 키
   const [channelsRevision, setChannelsRevision] = useState(0);
   const bumpChannels = () => setChannelsRevision((v) => v + 1);
 
@@ -38,7 +38,7 @@ export default function AdminPage() {
       {isSuperadmin(me) && <UserManagement    onChannelsChanged={bumpChannels} />}
       {isSuperadmin(me) && <ChannelManagement onChanged={bumpChannels} channelsRevision={channelsRevision} />}
       {isSuperadmin(me) && <ChannelIngest     onChanged={bumpChannels} />}
-      {me && <RestaurantInput me={me} channelsRevision={channelsRevision} />}
+      {isSuperadmin(me) && <RestaurantRequestApproval onChanged={bumpChannels} />}
       {me && <RestaurantManagement me={me} channelsRevision={channelsRevision} />}
     </div>
   );

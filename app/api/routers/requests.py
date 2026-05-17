@@ -109,7 +109,12 @@ def list_requests(
     응답에서 본문 (content/channel_url 등) 은 제외하므로 안전.
     """
     sb = get_service_client()
-    fields = "id, author_id, type, status, title, created_at, channel_id, users(nickname, email)"
+    # restaurant_edit/delete 요청은 payload·restaurant_id·appearance_id 까지 같이 — /admin 의 승인 UI 가 사용.
+    fields = (
+        "id, author_id, type, status, title, created_at, channel_id, "
+        "restaurant_id, appearance_id, payload, "
+        "users(nickname, email)"
+    )
 
     # 공지사항을 항상 최상단에 배치 — Postgrest 표현식 정렬이 안 되어 두 쿼리로 분리.
     notices_rows: list[dict] = []
@@ -122,7 +127,12 @@ def list_requests(
     if type != "notice":
         oq = sb.table("requests").select(fields).neq("type", "notice").order("created_at", desc=True)
         if status: oq = oq.eq("status", status)
-        if type:   oq = oq.eq("type", type)
+        if type:
+            oq = oq.eq("type", type)
+        else:
+            # 기본 목록은 맛집/영상 수정·삭제 요청 제외 — 이 둘은 /admin 의 전용 승인 UI 에서만 다룸.
+            # type=restaurant_edit 처럼 명시 지정 시엔 그대로 반환.
+            oq = oq.neq("type", "restaurant_edit").neq("type", "restaurant_delete")
         others_rows = exec_with_retry(oq).data or []
 
     rows = notices_rows + others_rows
@@ -136,6 +146,9 @@ def list_requests(
             "status": r["status"],
             "title": r["title"],
             "channel_id": r.get("channel_id"),
+            "restaurant_id": r.get("restaurant_id"),
+            "appearance_id": r.get("appearance_id"),
+            "payload": r.get("payload"),
             "author_nickname": (r.get("users") or {}).get("nickname") or (r.get("users") or {}).get("email"),
             "created_at": r["created_at"],
             "is_mine": me_seq is not None and r["author_id"] == me_seq,
@@ -302,8 +315,10 @@ def apply_restaurant_edit(rid: int, _: dict = Depends(require_superadmin)) -> di
         raise HTTPException(status_code=400, detail="restaurant_edit 타입에서만 사용 가능합니다.")
 
     payload = r.get("payload") or {}
-    rest_patch = _filter(payload.get("restaurant"), _RESTAURANT_EDITABLE)
-    app_patch  = _filter(payload.get("appearance"), _APPEARANCE_EDITABLE)
+    # payload 스키마: { restaurant_before, restaurant_after, appearance_before, appearance_after }.
+    # 실제 적용은 _after 만.
+    rest_patch = _filter(payload.get("restaurant_after"), _RESTAURANT_EDITABLE)
+    app_patch  = _filter(payload.get("appearance_after"), _APPEARANCE_EDITABLE)
     if not rest_patch and not app_patch:
         raise HTTPException(status_code=400, detail="적용할 변경 내용이 없습니다.")
 

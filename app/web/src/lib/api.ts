@@ -349,6 +349,16 @@ export const REQUEST_TYPE_LABEL: Record<RequestType, string> = {
   restaurant_delete:  "맛집/영상 삭제 요청",
 };
 
+export type RestaurantRequestPayload = {
+  // restaurant_edit — 변경 전 / 후 페어. 화면이 두 값을 나란히 비교해 보여줌.
+  restaurant_before?: Record<string, unknown> | null;
+  restaurant_after?:  Record<string, unknown> | null;
+  appearance_before?: Record<string, unknown> | null;
+  appearance_after?:  Record<string, unknown> | null;
+  // restaurant_delete — 삭제 사유
+  reason?: string;
+} | null;
+
 export type RequestSummary = {
   id: number;
   type: RequestType;
@@ -358,6 +368,10 @@ export type RequestSummary = {
   author_nickname: string | null;
   created_at: string;
   is_mine: boolean;
+  // 맛집/영상 수정·삭제 요청 시 채워짐 — /admin 승인 UI 에서 사용
+  restaurant_id?: number | null;
+  appearance_id?: number | null;
+  payload?: RestaurantRequestPayload;
 };
 
 export type RequestDetail = RequestSummary & {
@@ -367,14 +381,6 @@ export type RequestDetail = RequestSummary & {
   channel_url: string | null;
   channel_name: string | null;
   can_manage: boolean;
-  // 맛집/영상 수정·삭제 요청 시 채워짐
-  restaurant_id?: number | null;
-  appearance_id?: number | null;
-  payload?: {
-    restaurant?: Record<string, unknown> | null;
-    appearance?: Record<string, unknown> | null;
-    reason?: string;
-  } | null;
 };
 
 export type ManagedAppearance = {
