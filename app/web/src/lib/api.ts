@@ -169,6 +169,15 @@ export const api = {
   },
   myVotes: (target_type: VoteBody["target_type"]) =>
     request<Record<string, 1 | -1>>(`/votes/mine?target_type=${target_type}`, undefined, true),
+  voteScore: (
+    target_type: VoteBody["target_type"],
+    target_id: number,
+    from: string, // YYYY-MM-DD (KST)
+    to: string,
+  ) => {
+    const qs = new URLSearchParams({ target_type, target_id: String(target_id), from, to });
+    return request<{ likes: number; dislikes: number; net_score: number }>(`/votes/score?${qs}`);
+  },
 
   // admin — channel auto-ingest (SSE)
   ingestChannel: (handle: string, max_videos: number) =>

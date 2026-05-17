@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import RankingList, { Pagination } from "@/components/RankingList";
 import VoteButton from "@/components/VoteButton";
+import VotePeriodCompare from "@/components/VotePeriodCompare";
 import PageHeader from "@/components/ui/PageHeader";
 import { api, type AppearanceScore, type RankingRow } from "@/lib/api";
 
@@ -47,6 +48,11 @@ export default function VotePage() {
     <div className="space-y-6">
       <PageHeader title="투표 · 랭킹" />
 
+      {/* 안내문 — 투표 규칙 */}
+      <div className="rounded-xl border border-dashed border-brand bg-brand-surface p-3 text-sm font-bold text-brand">
+        ℹ 한 아이디는 하루에 맛집·채널·영상 각 1회씩 좋아요/싫어요 투표할 수 있습니다. (KST 자정 기준 갱신)
+      </div>
+
       {/* 인기 급상승 영상 — 최근 7일 좋아요 가중치 */}
       <TrendingSection rows={trending} />
 
@@ -56,6 +62,8 @@ export default function VotePage() {
       </div>
 
       <VideoRanking rows={videos} myVotes={myA} />
+
+      <VotePeriodCompare />
     </div>
   );
 }

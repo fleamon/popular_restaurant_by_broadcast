@@ -8,13 +8,13 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..deps import require_user
 from ..models.schemas import VoteRequest, VoteTarget
-from ..services.supabase_client import exec_with_retry, get_service_client
+from ..services.supabase_client import exec_with_retry, get_anon_client, get_service_client
 
 router = APIRouter(prefix="/votes", tags=["votes"])
 
@@ -92,3 +92,36 @@ def my_votes(target_type: VoteTarget = Query(...), user: dict = Depends(require_
           .eq("vote_date", _today_kst_iso())
     ).data or []
     return {str(r["target_id"]): r["value"] for r in rows}
+
+
+@router.get("/score")
+def vote_score(
+    target_type: VoteTarget = Query(...),
+    target_id: int = Query(...),
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+) -> dict:
+    """특정 대상이 [from, to] (KST 자정 경계, inclusive) 기간에 받은 좋아요/싫어요 합산.
+
+    vote_date(KST date) 컬럼이 있으면 그걸 쓰면 가장 깔끔하지만, 운영 DB 마이그레이션 적용 여부와
+    무관하게 동작하도록 created_at(timestamptz) 기반 범위 비교로 구현.
+    KST 자정 경계 → UTC 로 환산하여 created_at >= from_kst_midnight AND < (to_kst_midnight + 1day).
+    """
+    if to_date < from_date:
+        raise HTTPException(status_code=400, detail="to must be on or after from")
+    kst_start    = datetime.combine(from_date, time.min, tzinfo=_KST)
+    kst_end_excl = datetime.combine(to_date,   time.min, tzinfo=_KST) + timedelta(days=1)
+    sb = get_anon_client()
+
+    def _count(value: int) -> int:
+        res = exec_with_retry(
+            sb.table("votes").select("id", count="exact").limit(1)
+              .eq("target_type", target_type).eq("target_id", target_id).eq("value", value)
+              .gte("created_at", kst_start.isoformat())
+              .lt("created_at",  kst_end_excl.isoformat())
+        )
+        return res.count or 0
+
+    likes = _count(1)
+    dislikes = _count(-1)
+    return {"likes": likes, "dislikes": dislikes, "net_score": likes - dislikes}
