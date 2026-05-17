@@ -120,9 +120,11 @@ def list_restaurants(
             ).data or []
             for s in sc:
                 score_by_id[s["restaurant_id"]] = s
-        # 3) 정렬 — (-likes, name asc, -id) 보조키
+        # 3) 정렬 — likes desc, dislikes asc, name asc, id desc.
+        #    같은 좋아요면 싫어요 많을수록 뒤로 → 사용자 요구사항.
         index_rows.sort(key=lambda r: (
             -int(score_by_id.get(r["id"], {}).get("likes", 0) or 0),
+            int(score_by_id.get(r["id"], {}).get("dislikes", 0) or 0),
             r.get("current_name") or "",
             -r["id"],
         ))
@@ -270,8 +272,12 @@ def list_regions() -> list[dict]:
 def top_restaurants() -> list[dict]:
     """식당 좋아요 랭킹 — 전체. PostgREST 1000행 한도는 fetch_all 로 페이지 누적, IN 청크."""
     sb = get_anon_client()
+    # likes desc → dislikes asc (싫어요 많을수록 뒤로) → restaurant_id desc 안정 키.
     scores = fetch_all(
-        sb.table("v_restaurant_score").select("*").order("likes", desc=True).order("net_score", desc=True)
+        sb.table("v_restaurant_score").select("*")
+          .order("likes", desc=True)
+          .order("dislikes", desc=False)
+          .order("restaurant_id", desc=True)
     )
     if not scores:
         return []

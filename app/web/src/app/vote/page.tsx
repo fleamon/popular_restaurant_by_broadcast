@@ -117,7 +117,14 @@ function VideoRanking({ rows, myVotes }: { rows: AppearanceScore[]; myVotes: MyV
           return hay.includes(needle);
         })
       : rows;
-    return [...filtered].sort((a, b) => b.likes - a.likes);
+    // likes desc → dislikes asc (싫어요 많을수록 뒤로) → appearance_id desc 안정 키.
+    return [...filtered].sort((a, b) => {
+      const dl = b.likes - a.likes;
+      if (dl !== 0) return dl;
+      const dd = (a.dislikes ?? 0) - (b.dislikes ?? 0);
+      if (dd !== 0) return dd;
+      return b.appearance_id - a.appearance_id;
+    });
   }, [rows, q]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / VIDEO_PAGE_SIZE));

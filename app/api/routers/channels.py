@@ -26,7 +26,13 @@ def list_channels(channel_type: str | None = Query(default=None)) -> list[dict]:
 def channel_ranking() -> list[dict]:
     """채널 좋아요 랭킹 — 전체. PostgREST 1000행 한도는 fetch_all 로 페이지 누적."""
     sb = get_anon_client()
-    rows = fetch_all(sb.table("v_channel_score").select("*").order("likes", desc=True))
+    # likes desc → dislikes asc (싫어요 많을수록 뒤로) → channel_id desc 안정 키.
+    rows = fetch_all(
+        sb.table("v_channel_score").select("*")
+          .order("likes", desc=True)
+          .order("dislikes", desc=False)
+          .order("channel_id", desc=True)
+    )
     return [{**r, "id": r["channel_id"]} for r in rows]
 
 
@@ -34,7 +40,13 @@ def channel_ranking() -> list[dict]:
 def appearance_ranking() -> list[dict]:
     """영상 좋아요 랭킹 — 전체. 채널명·식당명 enrich. IN 절 URL 한계는 청크 처리."""
     sb = get_anon_client()
-    rows = fetch_all(sb.table("v_appearance_score").select("*").order("likes", desc=True))
+    # likes desc → dislikes asc (싫어요 많을수록 뒤로) → appearance_id desc 안정 키.
+    rows = fetch_all(
+        sb.table("v_appearance_score").select("*")
+          .order("likes", desc=True)
+          .order("dislikes", desc=False)
+          .order("appearance_id", desc=True)
+    )
     if not rows:
         return []
     ch_ids = list({r["channel_id"] for r in rows if r.get("channel_id") is not None})

@@ -25,6 +25,7 @@ drop function if exists public.handle_new_user()    cascade;
 drop function if exists public.set_updated_at()     cascade;
 drop function if exists public.current_user_id()    cascade;
 drop function if exists public.is_admin_or_super()  cascade;
+drop function if exists public.kst_date(timestamptz) cascade;
 
 drop type if exists public.user_role cascade;
 
@@ -35,11 +36,21 @@ create extension if not exists pg_trgm;
 create extension if not exists pgcrypto;
 
 -- ─────────────────────────────────────────────────────────────────────
--- 2. 공통 트리거 함수
+-- 2. 공통 트리거/유틸 함수
 -- ─────────────────────────────────────────────────────────────────────
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin new.updated_at = now(); return new; end;
+$$;
+
+-- KST(UTC+9) 날짜 변환. votes.vote_date generated column 에서 사용.
+-- Postgres 가 `AT TIME ZONE` 을 STABLE 로 분류해 generated 식에 직접 못 쓰므로,
+-- plpgsql 함수를 IMMUTABLE 로 선언해 wrap (DST 없는 한국 기준 안전).
+create or replace function public.kst_date(ts timestamptz)
+returns date language plpgsql immutable parallel safe as $$
+begin
+  return (ts at time zone 'UTC' + interval '9 hours')::date;
+end
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────
@@ -193,8 +204,11 @@ create table public.votes (
   target_id   bigint not null,
   value       smallint not null check (value in (1, -1)),
   created_at  timestamptz not null default now(),
-  unique (user_id, target_type, target_id)
+  -- KST(UTC+9) 기준 날짜. public.kst_date() 가 generated 식 IMMUTABLE 요구사항을 충족하는 wrapper.
+  vote_date   date generated always as (public.kst_date(created_at)) stored
 );
+-- 하루 1표 유니크 — 어제 이전 표는 그대로 보존됨.
+create unique index votes_uniq_per_day on public.votes (user_id, target_type, target_id, vote_date);
 create index idx_votes_target on public.votes (target_type, target_id);
 
 -- ─────────────────────────────────────────────────────────────────────
