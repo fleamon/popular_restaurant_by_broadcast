@@ -50,7 +50,7 @@ export default function VotePage() {
 
       {/* 안내문 — 투표 규칙 */}
       <div className="rounded-xl border border-dashed border-brand bg-brand-surface p-3 text-sm font-bold text-brand">
-        ℹ 한 아이디는 하루에 맛집·채널·영상 각 1회씩 좋아요/싫어요 투표할 수 있습니다. (KST 자정 기준 갱신)
+        ℹ 한 아이디는 하루에 맛집·채널·영상 각 1회씩 좋아요/싫어요 투표할 수 있습니다.
       </div>
 
       {/* 인기 급상승 영상 — 최근 7일 좋아요 가중치 */}
