@@ -80,6 +80,34 @@ export default function RequestDetailPanel({
     }
   }
 
+  async function applyEdit() {
+    if (!window.confirm("이 수정 요청을 적용해 restaurants/appearances 를 업데이트합니다. 계속할까요?")) return;
+    try {
+      const r = await api.applyRestaurantEdit(rid);
+      alert([
+        r.restaurant_updated ? "✅ 맛집 정보 갱신" : "",
+        r.appearance_updated ? "✅ 영상 정보 갱신" : "",
+        "상태: 완료",
+      ].filter(Boolean).join("\n"));
+      reload();
+      onChanged();
+    } catch (e) {
+      alert("적용 실패: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function applyDelete() {
+    if (!window.confirm("이 삭제 요청을 적용해 영상(appearance) 을 삭제합니다. 계속할까요?")) return;
+    try {
+      await api.applyRestaurantDelete(rid);
+      alert("✅ 영상 삭제됨. 상태: 완료");
+      reload();
+      onChanged();
+    } catch (e) {
+      alert("적용 실패: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
   if (!detail) {
     return <div className="border-t border-neutral-100 bg-neutral-50 p-4 text-xs text-neutral-400">불러오는 중…</div>;
   }
@@ -117,6 +145,26 @@ export default function RequestDetailPanel({
               title="요청자에게 이 채널 권한 부여 (charge_channel 추가 + role 'admin' 승격)"
             >
               ✅ 채널 권한 부여
+            </button>
+          )}
+          {detail.can_manage && detail.type === "restaurant_edit" && detail.status !== "완료" && (
+            <button
+              type="button"
+              onClick={() => void applyEdit()}
+              className="rounded-md border border-brand bg-white px-2 py-1 text-xs font-bold text-brand hover:bg-brand-surface"
+              title="payload 의 변경 사항을 실제 DB 에 적용 (상태=완료)"
+            >
+              ✅ 수정 적용
+            </button>
+          )}
+          {detail.can_manage && detail.type === "restaurant_delete" && detail.status !== "완료" && (
+            <button
+              type="button"
+              onClick={() => void applyDelete()}
+              className="rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50"
+              title="해당 영상(appearance) 을 삭제 (상태=완료)"
+            >
+              🗑 삭제 적용
             </button>
           )}
           {canDelete && (
@@ -164,6 +212,16 @@ function DetailBody({ detail }: { detail: RequestDetail }) {
   } else if (detail.type === "admin_request") {
     rows.push({ label: "관리요청 채널", value: detail.channel_name ?? "—" });
     rows.push({ label: "내용", value: <span className="whitespace-pre-line">{detail.content ?? "—"}</span> });
+  } else if (detail.type === "restaurant_edit") {
+    const p = detail.payload ?? {};
+    rows.push({ label: "맛집", value: detail.restaurant_id ?? "—" });
+    rows.push({ label: "영상", value: detail.appearance_id ?? "—" });
+    rows.push({ label: "변경 사항", value: <PayloadDiff payload={p} /> });
+  } else if (detail.type === "restaurant_delete") {
+    const reason = detail.payload?.reason;
+    rows.push({ label: "맛집", value: detail.restaurant_id ?? "—" });
+    rows.push({ label: "영상", value: detail.appearance_id ?? "—" });
+    rows.push({ label: "사유", value: <span className="whitespace-pre-line">{reason || "—"}</span> });
   } else {
     rows.push({ label: "내용", value: <span className="whitespace-pre-line">{detail.content ?? "—"}</span> });
   }
@@ -178,6 +236,27 @@ function DetailBody({ detail }: { detail: RequestDetail }) {
         ))}
       </dl>
     </div>
+  );
+}
+
+function PayloadDiff({ payload }: { payload: NonNullable<RequestDetail["payload"]> }) {
+  const r = (payload.restaurant ?? {}) as Record<string, unknown>;
+  const a = (payload.appearance ?? {}) as Record<string, unknown>;
+  const lines: { tag: string; key: string; value: unknown }[] = [
+    ...Object.entries(r).map(([k, v]) => ({ tag: "맛집", key: k, value: v })),
+    ...Object.entries(a).map(([k, v]) => ({ tag: "영상", key: k, value: v })),
+  ];
+  if (lines.length === 0) return <span className="text-neutral-400">—</span>;
+  return (
+    <ul className="space-y-1 font-mono text-xs">
+      {lines.map((l, i) => (
+        <li key={i} className="flex gap-2">
+          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 font-bold text-neutral-700">{l.tag}</span>
+          <span className="shrink-0 font-bold text-neutral-500">{l.key}</span>
+          <span className="min-w-0 flex-1 break-all text-neutral-900">{l.value === null ? "∅(null)" : String(l.value)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

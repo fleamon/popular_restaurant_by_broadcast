@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import ChannelIngest from "@/components/admin/ChannelIngest";
 import ChannelManagement from "@/components/admin/ChannelManagement";
 import RestaurantInput from "@/components/admin/RestaurantInput";
+import RestaurantManagement from "@/components/admin/RestaurantManagement";
 import UserManagement from "@/components/admin/UserManagement";
 import { useMe } from "@/lib/me";
 import { isAdmin, isSuperadmin } from "@/lib/role";
@@ -38,6 +39,7 @@ export default function AdminPage() {
       {isSuperadmin(me) && <ChannelManagement onChanged={bumpChannels} channelsRevision={channelsRevision} />}
       {isSuperadmin(me) && <ChannelIngest     onChanged={bumpChannels} />}
       {me && <RestaurantInput me={me} channelsRevision={channelsRevision} />}
+      {me && <RestaurantManagement me={me} channelsRevision={channelsRevision} />}
     </div>
   );
 }

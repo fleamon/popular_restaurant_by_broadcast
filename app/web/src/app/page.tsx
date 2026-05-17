@@ -43,9 +43,10 @@ export default function HomePage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  // 필터 상태 — 초기값은 URL 쿼리스트링에서 (공유 링크 복원)
+  // 필터 상태 — 초기값은 URL 쿼리스트링에서 (공유 링크 복원).
+  // 채널/지역 필터는 datalist + 자유 텍스트 입력 → 모두 문자열 state. 백엔드가 ilike 로 매칭.
   const [channelType, setChannelType] = useState<string>(sp.get("ct") ?? "");
-  const [channelId, setChannelId] = useState<number | "">(sp.get("cid") ? Number(sp.get("cid")) : "");
+  const [channelName, setChannelName] = useState<string>(sp.get("cn") ?? "");
   const [sido, setSido] = useState<string>(sp.get("sido") ?? "");
   const [sigungu, setSigungu] = useState<string>(sp.get("sigungu") ?? "");
   const [dong, setDong] = useState<string>(sp.get("dong") ?? "");
@@ -74,7 +75,7 @@ export default function HomePage() {
   // 같은 값이면 setState 가 noop 이라 무한루프 없음.
   useEffect(() => {
     setChannelType(sp.get("ct") ?? "");
-    setChannelId(sp.get("cid") ? Number(sp.get("cid")) : "");
+    setChannelName(sp.get("cn") ?? "");
     setSido(sp.get("sido") ?? "");
     setSigungu(sp.get("sigungu") ?? "");
     setDong(sp.get("dong") ?? "");
@@ -87,58 +88,53 @@ export default function HomePage() {
     api.listRegions().then(setRegions).catch(() => setRegions([]));
   }, []);
 
-  // 채널 타입 → 채널명 cascading
+  // 채널 타입 → 채널명 cascading (datalist 옵션용)
   const filteredChannels = useMemo(
     () => (channelType ? allChannels.filter((c) => c.channel_type === channelType) : allChannels),
     [allChannels, channelType],
   );
 
-  // 채널 타입이 바뀌면, 현재 선택된 채널이 더이상 유효하지 않으면 리셋
-  useEffect(() => {
-    if (channelId !== "" && !filteredChannels.some((c) => c.id === channelId)) {
-      setChannelId("");
-    }
-  }, [filteredChannels, channelId]);
-
-  // 시도/시군구/동 cascading 옵션 — regions 에서 동적 산출
+  // 시도/시군구/동 cascading 옵션 — 입력값이 datalist 옵션 중 정확히 일치하면 cascading,
+  // 부분 텍스트면 그 텍스트가 포함된 상위 후보 전체에 대해 하위 옵션을 모음 (ilike 와 일관).
   const sidoOptions = useMemo(
-    () => Array.from(new Set(regions.map((r) => r.sido))).sort(),
+    () => Array.from(new Set(regions.map((r) => r.sido).filter(Boolean))).sort(),
     [regions],
   );
   const sigunguOptions = useMemo(() => {
-    if (!sido) return [];
+    if (!sido) return Array.from(new Set(regions.map((r) => r.sigungu).filter(Boolean) as string[])).sort();
+    const match = (s: string) => s.includes(sido) || sido.includes(s);
     return Array.from(new Set(
-      regions.filter((r) => r.sido === sido && r.sigungu).map((r) => r.sigungu as string),
+      regions.filter((r) => match(r.sido) && r.sigungu).map((r) => r.sigungu as string),
     )).sort();
   }, [regions, sido]);
   const dongOptions = useMemo(() => {
-    if (!sido || !sigungu) return [];
+    if (!sigungu) return [];
+    const sidoMatch = sido ? ((s: string) => s.includes(sido) || sido.includes(s)) : (() => true);
+    const sigMatch  = (s: string) => s.includes(sigungu) || sigungu.includes(s);
     return Array.from(new Set(
-      regions.filter((r) => r.sido === sido && r.sigungu === sigungu && r.dong).map((r) => r.dong as string),
+      regions.filter((r) => sidoMatch(r.sido) && r.sigungu && sigMatch(r.sigungu) && r.dong)
+             .map((r) => r.dong as string),
     )).sort();
   }, [regions, sido, sigungu]);
 
-  // 상위 변경 시 하위 초기화. 단, 첫 마운트 시 URL 에서 받은 값은 보존하도록
-  // 사용자 입력이 발생한 후에만 리셋 (sido/sigungu 변경 핸들러에서 직접 처리).
-
   // 어떤 필터든 하나라도 설정되어야 결과 조회
-  const hasAnyFilter = !!(channelType || channelId || sido || sigungu || dong || cuisine || q);
+  const hasAnyFilter = !!(channelType || channelName || sido || sigungu || dong || cuisine || q);
 
   const params = useMemo(
     () => ({
-      channel_id:   channelId === "" ? undefined : channelId,
-      channel_type: channelId === "" && channelType ? channelType : undefined, // 채널명 선택 시 타입은 무시(이미 한정됨)
+      channel_name_like: channelName || undefined,
+      channel_type:      channelType || undefined,
       sido,
       sigungu,
       dong,
       cuisine,
       q,
     }),
-    [channelType, channelId, sido, sigungu, dong, cuisine, q],
+    [channelType, channelName, sido, sigungu, dong, cuisine, q],
   );
 
   // 필터 변경 시 페이지 1로 리셋 — 빈 페이지 보이지 않도록
-  useEffect(() => { setPage(1); }, [channelType, channelId, sido, sigungu, dong, cuisine, q, view]);
+  useEffect(() => { setPage(1); }, [channelType, channelName, sido, sigungu, dong, cuisine, q, view]);
 
   // count 는 항상 (필터 기준) — view/bounds 와 무관
   useEffect(() => {
@@ -173,7 +169,7 @@ export default function HomePage() {
   useEffect(() => {
     const qs = new URLSearchParams();
     if (channelType) qs.set("ct", channelType);
-    if (channelId !== "") qs.set("cid", String(channelId));
+    if (channelName) qs.set("cn", channelName);
     if (sido) qs.set("sido", sido);
     if (sigungu) qs.set("sigungu", sigungu);
     if (dong) qs.set("dong", dong);
@@ -181,7 +177,7 @@ export default function HomePage() {
     if (q) qs.set("q", q);
     const s = qs.toString();
     router.replace(s ? `/?${s}` : "/", { scroll: false });
-  }, [channelType, channelId, sido, sigungu, dong, cuisine, q, router]);
+  }, [channelType, channelName, sido, sigungu, dong, cuisine, q, router]);
 
   function triggerSearch() {
     if (!hasAnyFilter) return;
@@ -226,11 +222,10 @@ export default function HomePage() {
   // 카카오톡 공유 — 현재 페이지 URL 그대로(필터 포함) + 필터 요약
   async function shareCurrent() {
     const url = typeof window !== "undefined" ? window.location.href : "";
-    const channelName = channelId !== "" ? allChannels.find((c) => c.id === channelId)?.name : null;
     const locationBits = [sido, sigungu, dong].filter(Boolean).join(" ");
     const filterBits = [
       locationBits,
-      channelName,
+      channelName || null,
       cuisine,
       q ? `"${q}"` : null,
     ].filter(Boolean).join(" · ");
@@ -278,54 +273,53 @@ export default function HomePage() {
           ))}
         </select>
 
-        <select
-          value={channelId}
-          onChange={(e) => setChannelId(e.target.value === "" ? "" : Number(e.target.value))}
-          className={SELECT_CLS}
-        >
-          <option value="">채널명</option>
-          {filteredChannels.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        {/* 채널명 — datalist + 자유 텍스트. 입력값을 channel_name_like 로 백엔드 ilike. */}
+        <input
+          list="dl-channel"
+          value={channelName}
+          onChange={(e) => setChannelName(e.target.value)}
+          placeholder="채널명"
+          className={`${INPUT_CLS} min-w-[160px]`}
+        />
+        <datalist id="dl-channel">
+          {filteredChannels.map((c) => <option key={c.id} value={c.name} />)}
+        </datalist>
 
-        {/* 시/도 — 상위 변경 시 하위 시군구/동 초기화 */}
-        <select
+        {/* 시/도 — datalist + 자유 텍스트. 상위 변경 시 하위 초기화. */}
+        <input
+          list="dl-sido"
           value={sido}
           onChange={(e) => { setSido(e.target.value); setSigungu(""); setDong(""); }}
-          className={SELECT_CLS}
-        >
-          <option value="">시도별</option>
-          {sidoOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+          placeholder="시도"
+          className={`${INPUT_CLS} min-w-[120px]`}
+        />
+        <datalist id="dl-sido">
+          {sidoOptions.map((s) => <option key={s} value={s} />)}
+        </datalist>
 
-        {/* 시/군/구 — sido 가 있을 때만 활성 */}
-        <select
+        {/* 시/군/구 — datalist + 자유 텍스트 */}
+        <input
+          list="dl-sigungu"
           value={sigungu}
           onChange={(e) => { setSigungu(e.target.value); setDong(""); }}
-          disabled={!sido}
-          className={SELECT_CLS}
-        >
-          <option value="">시/군/구</option>
-          {sigunguOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+          placeholder="시/군/구"
+          className={`${INPUT_CLS} min-w-[120px]`}
+        />
+        <datalist id="dl-sigungu">
+          {sigunguOptions.map((s) => <option key={s} value={s} />)}
+        </datalist>
 
-        {/* 동/읍/면 — sigungu 가 있을 때만 활성 */}
-        <select
+        {/* 동/읍/면 — datalist + 자유 텍스트 */}
+        <input
+          list="dl-dong"
           value={dong}
           onChange={(e) => setDong(e.target.value)}
-          disabled={!sigungu}
-          className={SELECT_CLS}
-        >
-          <option value="">동/읍/면</option>
-          {dongOptions.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
+          placeholder="동/읍/면"
+          className={`${INPUT_CLS} min-w-[120px]`}
+        />
+        <datalist id="dl-dong">
+          {dongOptions.map((d) => <option key={d} value={d} />)}
+        </datalist>
 
         <select value={cuisine} onChange={(e) => setCuisine(e.target.value)} className={SELECT_CLS}>
           <option value="">카테고리</option>

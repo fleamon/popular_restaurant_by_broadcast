@@ -39,15 +39,21 @@ def _all_restaurant_ids_for_channels(sb, channel_ids: list[int]) -> set[int]:
 
 
 def _resolve_channel_filter(
-    sb, *, channel_id: int | None, channel_type: str | None,
+    sb, *,
+    channel_id: int | None,
+    channel_name_like: str | None,
+    channel_type: str | None,
 ) -> set[int] | None:
-    """channel_id / channel_type 필터를 restaurant_id 집합으로 환원. 필터 없으면 None."""
+    """channel_id / channel_name_like / channel_type 를 restaurant_id 집합으로 환원.
+    셋 다 비어 있으면 None (= 채널 필터 없음). channel_name_like 와 channel_type 은 AND 결합.
+    """
     if channel_id:
         return _all_restaurant_ids_for_channels(sb, [channel_id])
-    if channel_type:
-        ch_rows = exec_with_retry(
-            sb.table("channels").select("id").eq("channel_type", channel_type)
-        ).data or []
+    if channel_name_like or channel_type:
+        q = sb.table("channels").select("id")
+        if channel_type:       q = q.eq("channel_type", channel_type)
+        if channel_name_like:  q = q.ilike("name", f"%{channel_name_like}%")
+        ch_rows = exec_with_retry(q).data or []
         if not ch_rows:
             return set()
         return _all_restaurant_ids_for_channels(sb, [c["id"] for c in ch_rows])
@@ -56,11 +62,12 @@ def _resolve_channel_filter(
 
 @router.get("")
 def list_restaurants(
-    sido: str | None = Query(default=None),
-    sigungu: str | None = Query(default=None),
-    dong: str | None = Query(default=None),
+    sido: str | None = Query(default=None, description="ilike — 부분일치"),
+    sigungu: str | None = Query(default=None, description="ilike — 부분일치"),
+    dong: str | None = Query(default=None, description="ilike — 부분일치"),
     cuisine: str | None = Query(default=None),
     channel_id: int | None = Query(default=None),
+    channel_name_like: str | None = Query(default=None, description="ilike — 채널 이름 부분일치"),
     channel_type: str | None = Query(default=None),
     q: str | None = Query(default=None, description="가게명 like 검색"),
     limit: int = Query(default=500, le=1000),
@@ -74,14 +81,16 @@ def list_restaurants(
     ne_lng: float | None = Query(default=None),
 ) -> list[dict]:
     sb = get_anon_client()
-    allowed = _resolve_channel_filter(sb, channel_id=channel_id, channel_type=channel_type)
+    allowed = _resolve_channel_filter(
+        sb, channel_id=channel_id, channel_name_like=channel_name_like, channel_type=channel_type,
+    )
     if allowed is not None and not allowed:
         return []
 
     def _apply_filters(qb):
-        if sido:    qb = qb.eq("sido", sido)
-        if sigungu: qb = qb.eq("sigungu", sigungu)
-        if dong:    qb = qb.eq("dong", dong)
+        if sido:    qb = qb.ilike("sido", f"%{sido}%")
+        if sigungu: qb = qb.ilike("sigungu", f"%{sigungu}%")
+        if dong:    qb = qb.ilike("dong", f"%{dong}%")
         if cuisine: qb = qb.eq("cuisine", cuisine)
         if q:       qb = qb.ilike("current_name", f"%{q}%")
         # viewport bounds — sw=남서, ne=북동
@@ -171,20 +180,23 @@ def restaurants_count(
     dong: str | None = Query(default=None),
     cuisine: str | None = Query(default=None),
     channel_id: int | None = Query(default=None),
+    channel_name_like: str | None = Query(default=None),
     channel_type: str | None = Query(default=None),
     q: str | None = Query(default=None),
 ) -> dict:
     """list_restaurants 와 동일 필터 적용 후 총개수만 반환 (limit 무관)."""
     sb = get_anon_client()
-    allowed = _resolve_channel_filter(sb, channel_id=channel_id, channel_type=channel_type)
+    allowed = _resolve_channel_filter(
+        sb, channel_id=channel_id, channel_name_like=channel_name_like, channel_type=channel_type,
+    )
     if allowed is not None and not allowed:
         return {"count": 0}
 
     def base_q():
         b = sb.table("restaurants").select("id", count="exact").limit(1)
-        if sido:    b = b.eq("sido", sido)
-        if sigungu: b = b.eq("sigungu", sigungu)
-        if dong:    b = b.eq("dong", dong)
+        if sido:    b = b.ilike("sido", f"%{sido}%")
+        if sigungu: b = b.ilike("sigungu", f"%{sigungu}%")
+        if dong:    b = b.ilike("dong", f"%{dong}%")
         if cuisine: b = b.eq("cuisine", cuisine)
         if q:       b = b.ilike("current_name", f"%{q}%")
         return b
@@ -217,11 +229,12 @@ def region_center(
     if not sido:
         return {"lat": None, "lng": None}
     sb = get_anon_client()
-    base = sb.table("restaurants").select("lat, lng").eq("sido", sido)
+    # like 검색 일관성 — list/count 와 동일하게 ilike 적용.
+    base = sb.table("restaurants").select("lat, lng").ilike("sido", f"%{sido}%")
     if sigungu:
-        base = base.eq("sigungu", sigungu)
+        base = base.ilike("sigungu", f"%{sigungu}%")
     if dong:
-        base = base.eq("dong", dong)
+        base = base.ilike("dong", f"%{dong}%")
 
     # Postgrest 1000행 한도 → 페이지네이션 누적
     lat_sum = 0.0
@@ -512,6 +525,203 @@ def _fetch_naver_summary(place_id: str) -> dict | None:
             return (r.json() or {}).get("data", {}).get("placeDetail")
     except Exception:
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 영상(appearance) 단위 수정/삭제 — admin 은 본인 charge_channel 영상에 대해 요청,
+# superadmin 은 즉시 적용. 한 화면에서 restaurant + appearance 둘 다 다룸.
+# ─────────────────────────────────────────────────────────────────────
+
+# 수정 가능한 restaurant 필드 — RestaurantInput 폼이 받는 필드 + 메모/주소 등 부가
+_RESTAURANT_EDITABLE = {
+    "current_name", "current_address", "cuisine",
+    "sido", "sigungu", "dong", "lat", "lng",
+    "naver_map_url", "kakao_map_url", "naver_place_id", "kakao_place_id",
+    "phone", "notes",
+}
+# 수정 가능한 appearance 필드 — 등록 시 받는 필드 일체 + channel 변경 허용
+_APPEARANCE_EDITABLE = {
+    "channel_id", "episode_title", "source_url", "youtube_video_id",
+    "thumbnail_url", "summary", "aired_at",
+}
+
+
+def _filter_fields(payload: dict | None, allowed: set[str]) -> dict:
+    if not payload:
+        return {}
+    return {k: v for k, v in payload.items() if k in allowed}
+
+
+def _can_manage_channel(user: dict, channel_name: str | None) -> bool:
+    """superadmin 은 항상 True. admin 은 channel_name 이 본인 charge_channel 에 있을 때."""
+    if user.get("role") == "superadmin":
+        return True
+    if user.get("role") != "admin" or not channel_name:
+        return False
+    allowed = {_norm_channel(c) for c in (user.get("charge_channel") or [])}
+    return _norm_channel(channel_name) in allowed
+
+
+def _fetch_appearance_full(sb, aid: int) -> dict | None:
+    """appearance + restaurant + channel join. 권한 검사·수정 폼에 필요한 모든 필드 포함."""
+    rows = exec_with_retry(
+        sb.table("appearances")
+          .select("*, restaurants(*), channels(id, name, channel_type)")
+          .eq("id", aid)
+    ).data or []
+    return rows[0] if rows else None
+
+
+@router.get("/appearances/managed")
+def list_managed_appearances(user: dict = Depends(require_admin)) -> list[dict]:
+    """수정/삭제 권한이 있는 영상 목록. superadmin=전체, admin=charge_channel 의 영상."""
+    sb = get_service_client()
+    q = sb.table("appearances").select(
+        "id, restaurant_id, channel_id, episode_title, source_url, youtube_video_id, aired_at, "
+        "restaurants(id, current_name, current_address), channels(id, name, channel_type)"
+    ).order("id", desc=True)
+    if user["role"] == "admin":
+        allowed_norm = {_norm_channel(c) for c in (user.get("charge_channel") or [])}
+        if not allowed_norm:
+            return []
+        ch_rows = exec_with_retry(sb.table("channels").select("id, name")).data or []
+        ch_ids = [c["id"] for c in ch_rows if _norm_channel(c["name"]) in allowed_norm]
+        if not ch_ids:
+            return []
+        q = q.in_("channel_id", ch_ids)
+    rows = exec_with_retry(q.limit(1000)).data or []
+    out = []
+    for r in rows:
+        rest = r.get("restaurants") or {}
+        ch = r.get("channels") or {}
+        out.append({
+            "id": r["id"],
+            "restaurant_id": r.get("restaurant_id"),
+            "channel_id": r.get("channel_id"),
+            "restaurant_name": rest.get("current_name"),
+            "restaurant_address": rest.get("current_address"),
+            "channel_name": ch.get("name"),
+            "channel_type": ch.get("channel_type"),
+            "episode_title": r.get("episode_title"),
+            "source_url": r.get("source_url"),
+            "youtube_video_id": r.get("youtube_video_id"),
+            "aired_at": r.get("aired_at"),
+        })
+    return out
+
+
+@router.get("/appearances/{aid}")
+def get_appearance_detail(aid: int, user: dict = Depends(require_admin)) -> dict:
+    """영상 수정 폼용 — restaurant + appearance + channel 풀어서 반환. 권한 가드 포함."""
+    sb = get_service_client()
+    row = _fetch_appearance_full(sb, aid)
+    if not row:
+        raise HTTPException(status_code=404, detail="appearance not found")
+    ch_name = (row.get("channels") or {}).get("name")
+    if not _can_manage_channel(user, ch_name):
+        raise HTTPException(status_code=403, detail="not your charge_channel")
+    return row
+
+
+class AppearanceEditBody(BaseModel):
+    restaurant: dict | None = None  # _RESTAURANT_EDITABLE 만 적용
+    appearance: dict | None = None  # _APPEARANCE_EDITABLE 만 적용
+
+
+@router.patch("/appearances/{aid}")
+def update_appearance_now(
+    aid: int, body: AppearanceEditBody, _: dict = Depends(require_superadmin),
+) -> dict:
+    """superadmin 즉시 적용 — restaurant + appearance 동시 update."""
+    sb = get_service_client()
+    row = _fetch_appearance_full(sb, aid)
+    if not row:
+        raise HTTPException(status_code=404, detail="appearance not found")
+    rest_patch = _filter_fields(body.restaurant, _RESTAURANT_EDITABLE)
+    app_patch  = _filter_fields(body.appearance, _APPEARANCE_EDITABLE)
+    if rest_patch and row.get("restaurant_id"):
+        exec_with_retry(sb.table("restaurants").update(rest_patch).eq("id", row["restaurant_id"]))
+    if app_patch:
+        exec_with_retry(sb.table("appearances").update(app_patch).eq("id", aid))
+    return {"ok": True}
+
+
+@router.delete("/appearances/{aid}")
+def delete_appearance_now(aid: int, _: dict = Depends(require_superadmin)) -> dict:
+    """superadmin 즉시 영상 삭제. 맛집은 다른 영상이 가리킬 수 있으니 cascade 안 함."""
+    sb = get_service_client()
+    exec_with_retry(sb.table("appearances").delete().eq("id", aid))
+    return {"ok": True}
+
+
+class EditRequestBody(BaseModel):
+    title: str | None = None
+    restaurant: dict | None = None
+    appearance: dict | None = None
+
+
+@router.post("/appearances/{aid}/edit-request")
+def create_appearance_edit_request(
+    aid: int, body: EditRequestBody, user: dict = Depends(require_admin),
+) -> dict:
+    """admin → superadmin 에게 수정 승인 요청. 변경 페이로드를 requests.payload 에 저장."""
+    sb = get_service_client()
+    row = _fetch_appearance_full(sb, aid)
+    if not row:
+        raise HTTPException(status_code=404, detail="appearance not found")
+    ch_name = (row.get("channels") or {}).get("name")
+    if not _can_manage_channel(user, ch_name):
+        raise HTTPException(status_code=403, detail="not your charge_channel")
+
+    rest_patch = _filter_fields(body.restaurant, _RESTAURANT_EDITABLE)
+    app_patch  = _filter_fields(body.appearance, _APPEARANCE_EDITABLE)
+    if not rest_patch and not app_patch:
+        raise HTTPException(status_code=400, detail="변경된 값이 없습니다.")
+
+    rest_name = (row.get("restaurants") or {}).get("current_name") or "(맛집)"
+    title = (body.title or f"맛집/영상 수정 요청: {rest_name}").strip()[:100]
+
+    res = exec_with_retry(sb.table("requests").insert({
+        "author_id":     user["sequence"],
+        "type":          "restaurant_edit",
+        "title":         title,
+        "restaurant_id": row.get("restaurant_id"),
+        "appearance_id": aid,
+        "payload":       {"restaurant": rest_patch, "appearance": app_patch},
+    }))
+    return {"id": (res.data[0] if res.data else {}).get("id")}
+
+
+class DeleteRequestBody(BaseModel):
+    reason: str | None = None
+
+
+@router.post("/appearances/{aid}/delete-request")
+def create_appearance_delete_request(
+    aid: int, body: DeleteRequestBody, user: dict = Depends(require_admin),
+) -> dict:
+    """admin → superadmin 에게 영상 삭제 승인 요청."""
+    sb = get_service_client()
+    row = _fetch_appearance_full(sb, aid)
+    if not row:
+        raise HTTPException(status_code=404, detail="appearance not found")
+    ch_name = (row.get("channels") or {}).get("name")
+    if not _can_manage_channel(user, ch_name):
+        raise HTTPException(status_code=403, detail="not your charge_channel")
+
+    rest_name = (row.get("restaurants") or {}).get("current_name") or "(맛집)"
+    title = f"맛집/영상 삭제 요청: {rest_name}"[:100]
+    payload = {"reason": (body.reason or "").strip()[:500]} if body.reason else {}
+
+    res = exec_with_retry(sb.table("requests").insert({
+        "author_id":     user["sequence"],
+        "type":          "restaurant_delete",
+        "title":         title,
+        "restaurant_id": row.get("restaurant_id"),
+        "appearance_id": aid,
+        "payload":       payload,
+    }))
+    return {"id": (res.data[0] if res.data else {}).get("id")}
 
 
 @router.get("/{restaurant_id}/external-info")

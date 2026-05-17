@@ -116,6 +116,37 @@ export const api = {
       true,
     ),
 
+  // 영상(appearance) 단위 수정/삭제 — admin 은 요청, superadmin 은 즉시 적용
+  listManagedAppearances: () =>
+    request<ManagedAppearance[]>(`/restaurants/appearances/managed`, undefined, true),
+  getAppearance: (aid: number) =>
+    request<AppearanceDetail>(`/restaurants/appearances/${aid}`, undefined, true),
+  updateAppearanceNow: (aid: number, body: AppearanceEditPayload) =>
+    request<{ ok: boolean }>(
+      `/restaurants/appearances/${aid}`,
+      { method: "PATCH", body: JSON.stringify(body) }, true,
+    ),
+  deleteAppearanceNow: (aid: number) =>
+    request<{ ok: boolean }>(`/restaurants/appearances/${aid}`, { method: "DELETE" }, true),
+  createAppearanceEditRequest: (aid: number, body: AppearanceEditPayload) =>
+    request<{ id: number }>(
+      `/restaurants/appearances/${aid}/edit-request`,
+      { method: "POST", body: JSON.stringify(body) }, true,
+    ),
+  createAppearanceDeleteRequest: (aid: number, reason?: string) =>
+    request<{ id: number }>(
+      `/restaurants/appearances/${aid}/delete-request`,
+      { method: "POST", body: JSON.stringify({ reason: reason ?? null }) }, true,
+    ),
+  applyRestaurantEdit: (rid: number) =>
+    request<{ ok: boolean; restaurant_updated: boolean; appearance_updated: boolean }>(
+      `/requests/${rid}/apply-restaurant-edit`, { method: "POST" }, true,
+    ),
+  applyRestaurantDelete: (rid: number) =>
+    request<{ ok: boolean; deleted_appearance_id: number | null }>(
+      `/requests/${rid}/apply-restaurant-delete`, { method: "POST" }, true,
+    ),
+
   // channels
   listChannels: () => request<Channel[]>(`/channels`),
   channelRanking: () => request<RankingRow[]>(`/channels/ranking`),
@@ -299,14 +330,23 @@ export type UsersListResponse = {
 };
 
 // 요청 게시판
-export type RequestType = "channel_add" | "admin_request" | "bug" | "etc" | "notice";
+export type RequestType =
+  | "channel_add"
+  | "admin_request"
+  | "bug"
+  | "etc"
+  | "notice"
+  | "restaurant_edit"
+  | "restaurant_delete";
 export type RequestStatus = "요청" | "처리중" | "완료" | "반려";
 export const REQUEST_TYPE_LABEL: Record<RequestType, string> = {
-  channel_add:   "채널 추가요청",
-  admin_request: "관리자 요청",
-  bug:           "버그 제보",
-  etc:           "기타 요청",
-  notice:        "공지사항",
+  channel_add:        "채널 추가요청",
+  admin_request:      "관리자 요청",
+  bug:                "버그 제보",
+  etc:                "기타 요청",
+  notice:             "공지사항",
+  restaurant_edit:    "맛집/영상 수정 요청",
+  restaurant_delete:  "맛집/영상 삭제 요청",
 };
 
 export type RequestSummary = {
@@ -327,6 +367,56 @@ export type RequestDetail = RequestSummary & {
   channel_url: string | null;
   channel_name: string | null;
   can_manage: boolean;
+  // 맛집/영상 수정·삭제 요청 시 채워짐
+  restaurant_id?: number | null;
+  appearance_id?: number | null;
+  payload?: {
+    restaurant?: Record<string, unknown> | null;
+    appearance?: Record<string, unknown> | null;
+    reason?: string;
+  } | null;
+};
+
+export type ManagedAppearance = {
+  id: number;
+  restaurant_id: number | null;
+  channel_id: number | null;
+  restaurant_name: string | null;
+  restaurant_address: string | null;
+  channel_name: string | null;
+  channel_type: string | null;
+  episode_title: string | null;
+  source_url: string | null;
+  youtube_video_id: string | null;
+  aired_at: string | null;
+};
+
+export type AppearanceDetail = {
+  id: number;
+  restaurant_id: number;
+  channel_id: number;
+  episode_title: string | null;
+  source_url: string | null;
+  youtube_video_id: string | null;
+  thumbnail_url: string | null;
+  summary: string | null;
+  aired_at: string | null;
+  restaurants: Restaurant;
+  channels: { id: number; name: string; channel_type: string };
+};
+
+export type AppearanceEditPayload = {
+  title?: string;
+  restaurant?: Partial<Restaurant>;
+  appearance?: Partial<{
+    channel_id: number;
+    episode_title: string | null;
+    source_url: string | null;
+    youtube_video_id: string | null;
+    thumbnail_url: string | null;
+    summary: string | null;
+    aired_at: string | null;
+  }>;
 };
 
 export type CreateRequestBody = {

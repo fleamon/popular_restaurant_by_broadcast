@@ -22,8 +22,22 @@ from ..services.supabase_client import exec_with_retry, get_service_client
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
-REQUEST_TYPES = ("channel_add", "admin_request", "bug", "etc", "notice")
+REQUEST_TYPES = ("channel_add", "admin_request", "bug", "etc", "notice",
+                 "restaurant_edit", "restaurant_delete")
 REQUEST_STATUSES = ("요청", "처리중", "완료", "반려")
+
+# restaurant_edit/delete payload 적용 시 화이트리스트.
+# restaurants.py 의 동일 set 과 일치시켜야 함.
+_RESTAURANT_EDITABLE = {
+    "current_name", "current_address", "cuisine",
+    "sido", "sigungu", "dong", "lat", "lng",
+    "naver_map_url", "kakao_map_url", "naver_place_id", "kakao_place_id",
+    "phone", "notes",
+}
+_APPEARANCE_EDITABLE = {
+    "channel_id", "episode_title", "source_url", "youtube_video_id",
+    "thumbnail_url", "summary", "aired_at",
+}
 
 
 # ─── Schemas ──────────────────────────────────────────────────────
@@ -260,6 +274,65 @@ def grant_channel(rid: int, _: dict = Depends(require_superadmin)) -> dict:
         "role_upgraded": role_upgraded,
         "user": u.get("nickname") or u.get("email"),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 맛집/영상 수정·삭제 요청의 승인 적용 — superadmin 전용
+# ─────────────────────────────────────────────────────────────────────
+
+def _filter(payload: dict | None, allowed: set[str]) -> dict:
+    if not payload:
+        return {}
+    return {k: v for k, v in payload.items() if k in allowed}
+
+
+@router.post("/{rid}/apply-restaurant-edit")
+def apply_restaurant_edit(rid: int, _: dict = Depends(require_superadmin)) -> dict:
+    """restaurant_edit 요청의 payload 를 실제 restaurants/appearances 에 반영.
+    적용 후 요청 status='완료' 로 마킹.
+    """
+    sb = get_service_client()
+    rows = exec_with_retry(
+        sb.table("requests").select("*").eq("id", rid)
+    ).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="not found")
+    r = rows[0]
+    if r["type"] != "restaurant_edit":
+        raise HTTPException(status_code=400, detail="restaurant_edit 타입에서만 사용 가능합니다.")
+
+    payload = r.get("payload") or {}
+    rest_patch = _filter(payload.get("restaurant"), _RESTAURANT_EDITABLE)
+    app_patch  = _filter(payload.get("appearance"), _APPEARANCE_EDITABLE)
+    if not rest_patch and not app_patch:
+        raise HTTPException(status_code=400, detail="적용할 변경 내용이 없습니다.")
+
+    if rest_patch and r.get("restaurant_id"):
+        exec_with_retry(sb.table("restaurants").update(rest_patch).eq("id", r["restaurant_id"]))
+    if app_patch and r.get("appearance_id"):
+        exec_with_retry(sb.table("appearances").update(app_patch).eq("id", r["appearance_id"]))
+
+    exec_with_retry(sb.table("requests").update({"status": "완료"}).eq("id", rid))
+    return {"ok": True, "restaurant_updated": bool(rest_patch), "appearance_updated": bool(app_patch)}
+
+
+@router.post("/{rid}/apply-restaurant-delete")
+def apply_restaurant_delete(rid: int, _: dict = Depends(require_superadmin)) -> dict:
+    """restaurant_delete 요청 적용 — 해당 appearance 삭제. 맛집은 그대로 (다른 영상이 가리킬 수 있음)."""
+    sb = get_service_client()
+    rows = exec_with_retry(
+        sb.table("requests").select("*").eq("id", rid)
+    ).data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="not found")
+    r = rows[0]
+    if r["type"] != "restaurant_delete":
+        raise HTTPException(status_code=400, detail="restaurant_delete 타입에서만 사용 가능합니다.")
+    aid = r.get("appearance_id")
+    if aid:
+        exec_with_retry(sb.table("appearances").delete().eq("id", aid))
+    exec_with_retry(sb.table("requests").update({"status": "완료"}).eq("id", rid))
+    return {"ok": True, "deleted_appearance_id": aid}
 
 
 @router.get("/{rid}/comments")
