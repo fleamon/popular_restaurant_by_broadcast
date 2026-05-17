@@ -235,7 +235,9 @@ export default function HomePage() {
       q ? `"${q}"` : null,
     ].filter(Boolean).join(" · ");
     const title = filterBits ? `${filterBits} 맛집` : "백안맛지도 — 방송 맛집 지도";
-    const description = `${rows.length}개의 맛집 결과 — 백안맛지도에서 확인하기`;
+    // 화면 헤더와 동일한 소스: totalCount(필터 기준 전체) — rows.length 는 viewport/페이지 단위라 다른 값.
+    const count = totalCount ?? rows.length;
+    const description = `${count}개의 맛집 결과 — 백안맛지도에서 확인하기`;
     const imageUrl = `${window.location.origin}/white_eyes_blue.png`;
     const ok = await shareKakaoTalk({ title, description, imageUrl, url });
     if (!ok) {
