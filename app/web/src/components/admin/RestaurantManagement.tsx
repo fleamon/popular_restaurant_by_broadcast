@@ -107,15 +107,16 @@ export default function RestaurantManagement({ me, channelsRevision }: { me: MeR
     }
   }, [channelOptions, selectedChannel, customMode]);
 
-  // admin 기본 채널 자동 선택 — charge_channel 이 1개면 그것, 여러 개면 첫 번째.
-  // superadmin 은 전 채널 접근 가능하므로 의미 없는 기본 선택 안 함.
+  // 기본 채널 자동 선택 — 진입 시 가게이름 입력 흐름으로 바로 들어가도록.
+  //   - admin:      charge_channel 의 첫 채널
+  //   - superadmin: 전체 채널 목록 중 첫 번째
+  // 진입 후 사용자가 채널을 바꾸면 prevChannelRef cascade 로 폼 리셋됨.
   useEffect(() => {
-    if (superadmin) return;
     if (customMode) return;
     if (selectedChannel) return;
     if (channelOptions.length === 0) return;
     setSelectedChannel(channelOptions[0]);
-  }, [superadmin, customMode, selectedChannel, channelOptions]);
+  }, [customMode, selectedChannel, channelOptions]);
 
   // 채널 바뀌면 폼/선택 영상 리셋
   const prevChannelRef = useRef<string>("");
@@ -312,7 +313,8 @@ export default function RestaurantManagement({ me, channelsRevision }: { me: MeR
     setBackfillBusy(true);
     setBackfillMsg("좌표 비어있는 맛집을 찾는 중…");
     try {
-      const all = await api.listRestaurants({ limit: 1000 });
+      // limit=0 → 백엔드가 fetch_all 로 모든 맛집 누적 반환 (1000행 한도 우회)
+      const all = await api.listRestaurants({ limit: 0 });
       const targets = all.filter((r) => r.lat == null || r.lng == null);
       if (targets.length === 0) { setBackfillMsg("✅ 보정 대상 없음"); return; }
       let ok = 0, fail = 0;

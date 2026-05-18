@@ -66,7 +66,7 @@ def list_restaurants(
     channel_name_like: str | None = Query(default=None, description="ilike — 채널 이름 부분일치"),
     channel_type: str | None = Query(default=None),
     q: str | None = Query(default=None, description="가게명 like 검색"),
-    limit: int = Query(default=500, le=1000),
+    limit: int = Query(default=500, ge=0, description="0 = 무제한 (fetch_all 페이지 누적)"),
     page: int = Query(default=0, ge=0, description="1-based 페이지. 0/미지정 시 limit 모드"),
     page_size: int = Query(default=0, ge=0, le=100, description="페이지당 행 수. 0/미지정 시 limit 모드"),
     sort: str = Query(default="id_desc", description="id_desc | likes_desc (likes desc + name asc)"),
@@ -161,7 +161,13 @@ def list_restaurants(
         rows = exec_with_retry(query.range(start, start + page_size - 1)).data or []
         return rows
 
-    # (D) limit fallback
+    # (D) limit fallback — PostgREST 1회 응답 1000행 한도를 우회하려면 fetch_all.
+    #     limit=0 또는 1000 초과 요청은 fetch_all 로 누적 후 메모리 slice.
+    if limit == 0 or limit > 1000:
+        rows = fetch_all(query)
+        if allowed is not None:
+            rows = [r for r in rows if r["id"] in allowed]
+        return rows if limit == 0 else rows[:limit]
     query = query.limit(limit)
     rows = exec_with_retry(query).data or []
     if allowed is not None:
@@ -569,23 +575,48 @@ def _fetch_appearance_full(sb, aid: int) -> dict | None:
 
 
 @router.get("/appearances/managed")
-def list_managed_appearances(user: dict = Depends(require_admin)) -> list[dict]:
-    """수정/삭제 권한이 있는 영상 목록. superadmin=전체, admin=charge_channel 의 영상."""
+def list_managed_appearances(
+    user: dict = Depends(require_admin),
+    channel_id: int | None = Query(default=None, description="지정 시 그 채널 영상만 — superadmin/admin 모두 권한 검증 후"),
+) -> list[dict]:
+    """수정/삭제 권한이 있는 영상 목록.
+      - superadmin: 전체 (또는 channel_id 지정 시 그 채널만)
+      - admin: charge_channel 영상만 (channel_id 지정 시 그 ID 가 charge_channel 인지 검증)
+    PostgREST 1000행 한도 회피 — fetch_all 로 페이지 누적.
+    """
     sb = get_service_client()
-    q = sb.table("appearances").select(
+    select_cols = (
         "id, restaurant_id, channel_id, episode_title, source_url, youtube_video_id, aired_at, "
         "restaurants(id, current_name, current_address), channels(id, name, channel_type)"
-    ).order("id", desc=True)
+    )
+
+    # admin 권한 검증 — 허용 채널 ID 집합 계산
+    allowed_admin_ids: set[int] | None = None
     if user["role"] == "admin":
         allowed_norm = {_norm_channel(c) for c in (user.get("charge_channel") or [])}
         if not allowed_norm:
             return []
         ch_rows = exec_with_retry(sb.table("channels").select("id, name")).data or []
-        ch_ids = [c["id"] for c in ch_rows if _norm_channel(c["name"]) in allowed_norm]
-        if not ch_ids:
+        allowed_admin_ids = {c["id"] for c in ch_rows if _norm_channel(c["name"]) in allowed_norm}
+        if not allowed_admin_ids:
             return []
-        q = q.in_("channel_id", ch_ids)
-    rows = exec_with_retry(q.limit(1000)).data or []
+
+    # 필터 적용 — channel_id 가 명시되면 단일, 아니면 admin 은 charge_channel IN, superadmin 은 무필터
+    def _build_query():
+        q = sb.table("appearances").select(select_cols).order("id", desc=True)
+        if channel_id is not None:
+            if allowed_admin_ids is not None and channel_id not in allowed_admin_ids:
+                # admin 이 권한 없는 채널 요청 — 강제 빈 결과
+                return None
+            return q.eq("channel_id", channel_id)
+        if allowed_admin_ids is not None:
+            return q.in_("channel_id", list(allowed_admin_ids))
+        return q
+
+    qb = _build_query()
+    if qb is None:
+        return []
+    rows = fetch_all(qb)
     out = []
     for r in rows:
         rest = r.get("restaurants") or {}
