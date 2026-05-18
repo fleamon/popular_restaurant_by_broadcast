@@ -4,10 +4,8 @@ export const metadata = { title: "소개 · 백안맛지도" };
 
 // 후원 URL — 환경변수에서 받음. 값이 없으면 해당 버튼은 자동 숨김.
 // 로컬: app/web/.env.local — 운영: Vercel Project Settings → Environment Variables.
-const BMC_URL      = process.env.NEXT_PUBLIC_BMC_URL      ?? "";
 const TOSS_URL     = process.env.NEXT_PUBLIC_TOSS_URL     ?? "";
 const KAKAOPAY_URL = process.env.NEXT_PUBLIC_KAKAOPAY_URL ?? "";
-const GITHUB_URL   = process.env.NEXT_PUBLIC_GITHUB_URL   ?? "";
 
 // 주요 기능 카드 — 여기 배열을 수정하면 페이지의 카드 그리드가 자동으로 갱신됨.
 const FEATURES: { title: string; desc: string }[] = [
@@ -38,7 +36,7 @@ const FEATURES: { title: string; desc: string }[] = [
 ];
 
 export default function AboutPage() {
-  const hasDonation = !!(BMC_URL || TOSS_URL || KAKAOPAY_URL);
+  const hasDonation = !!(TOSS_URL || KAKAOPAY_URL);
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -76,12 +74,6 @@ export default function AboutPage() {
           <h2 className="font-soft text-xl font-bold tracking-tight text-brand">개발자 후원</h2>
           <p className="text-sm text-neutral-600">서버·도메인·API 호출 비용에 큰 힘이 됩니다 🙇‍♀️</p>
           <div className="flex flex-wrap gap-2 text-sm">
-            {BMC_URL && (
-              <a href={BMC_URL} target="_blank" rel="noreferrer"
-                 className="rounded-md bg-brand px-3 py-2 font-bold text-brand-fg hover:bg-brand-hover">
-                ☕ 커피 사주기
-              </a>
-            )}
             {TOSS_URL && (
               <a href={TOSS_URL} target="_blank" rel="noreferrer"
                  className="rounded-md border border-brand px-3 py-2 font-bold text-brand hover:bg-white">
@@ -95,17 +87,6 @@ export default function AboutPage() {
               </a>
             )}
           </div>
-        </section>
-      )}
-
-      {/* GitHub 링크 — 환경변수 채워졌을 때만 */}
-      {GITHUB_URL && (
-        <section className="text-sm text-neutral-500">
-          <p>
-            소스코드는{" "}
-            <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="font-bold text-brand underline">GitHub</a>
-            {" "}에서 확인할 수 있습니다.
-          </p>
         </section>
       )}
     </div>
