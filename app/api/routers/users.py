@@ -1,20 +1,14 @@
 """superadmin 전용 — 회원 관리 (목록/검색/role 변경/charge_channel/block)."""
 from __future__ import annotations
 
-import re
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_superadmin
 from ..services.supabase_client import get_service_client
+from ..utils import norm_channel as _norm_channel
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_superadmin)])
-
-
-def _norm_channel(name: str) -> str:
-    """채널명 정규화 — 모든 공백 제거. '맛있는 녀석들' === '맛있는녀석들'."""
-    return re.sub(r"\s+", "", (name or "").strip())
 
 
 @router.get("")

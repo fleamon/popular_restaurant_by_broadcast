@@ -9,11 +9,7 @@ from pydantic import BaseModel
 
 from ..deps import require_admin, require_superadmin
 from ..services.supabase_client import exec_with_retry, fetch_all, get_anon_client, get_service_client
-
-
-def _norm_channel(name: str) -> str:
-    """채널명 정규화 — 모든 공백 제거. users.py 의 동일 함수와 일치."""
-    return re.sub(r"\s+", "", (name or "").strip())
+from ..utils import norm_channel as _norm_channel
 
 router = APIRouter(prefix="/restaurants", tags=["restaurants"])
 

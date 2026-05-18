@@ -18,20 +18,22 @@ popular_restaurant_by_broadcast/
 │   │   └── src/
 │   │       ├── app/        # App Router (page.tsx = 라우트)
 │   │       ├── components/ # Map, NavTabs, VoteButton, VotePeriodCompare, DonationSection, admin/* ...
-│   │       └── lib/        # api / supabase / me / role / geocode / kakao-share
+│   │       └── lib/        # api / supabase / me / role / geocode / kakao-share / auth
 │   └── api/                # FastAPI (REST + SSE)
 │       ├── routers/        # restaurants / channels / requests / votes / admin / auth / users
 │       ├── services/       # supabase / kakao_geo / naver_match / youtube_api / openai_extract / ingest_channel
 │       ├── deps.py         # 인증 의존성 (require_user / require_admin / require_superadmin)
+│       ├── utils.py        # 공용 유틸 (norm_channel — 채널명 공백제거 비교)
 │       ├── settings.py     # 시크릿 로더 (환경변수 우선 → config/secrets.json)
 │       └── main.py
 ├── database/
 │   ├── schema.sql          # 전체 스키마 (한 번에 실행 — 최신 상태)
 │   └── migrations/         # 0001 ~ 누적 마이그레이션 (운영 DB 증분 적용)
 ├── data/                   # 콘솔용 일회성/배치 스크립트
-│   ├── ingest_channels.py
+│   ├── ingest_channels.py        # YouTube 채널 자동 수집 (CLI 진입점)
 │   ├── seed_channel_thumbnails.py
-│   └── seed_naver_places.py
+│   ├── seed_naver_places.py
+│   └── utils/                    # get_config / get_logger
 ├── config/
 │   ├── secrets.example.json
 │   └── secrets.json        # .gitignore (로컬 전용)
@@ -66,7 +68,7 @@ popular_restaurant_by_broadcast/
 ## 🗳 투표 규칙
 
 - 한 아이디는 **하루(KST 자정 기준) 에 맛집·채널·영상 각 1회씩** 좋아요/싫어요 투표 가능.
-- 같은 날 안에서: 같은 버튼 재클릭 = 오늘 분 취소(DELETE) · 반대 버튼 = 오늘 분 전환(UPDATE).
+- 같은 날 안에서: 같은 버튼 재클릭 = 오늘 분 취소 · 반대 버튼 = 오늘 분 전환.
 - 어제 이전 표는 그대로 누적 — 매일 한 표씩 쌓이는 구조. 집계 뷰가 누적 합산.
 - DB 무결성: `votes` 테이블에 `vote_date date GENERATED` (KST) + `UNIQUE(user_id, target_type, target_id, vote_date)`.
 - 랭킹 정렬: `likes desc` → `dislikes asc` → `id desc` (모든 랭킹 동일).
@@ -197,9 +199,9 @@ npm run dev
 ### 1단계. 프로젝트 생성
 
 1. https://supabase.com 가입 → 우측 상단 **New project**
-2. Organization 선택 (또는 Create new) → 프로젝트 이름, DB password 설정
+2. Organization 선택 → 프로젝트 이름, DB password 설정
 3. Region: **Northeast Asia (Seoul)**
-4. Pricing plan: Free
+4. Pricing plan: **Free**
 5. 생성 후 좌측 **Settings → API** 탭에서 다음 값 복사:
    - `Project URL` → `supabase.url`
    - `anon public` 키 → `supabase.anon_key`
@@ -210,11 +212,7 @@ npm run dev
 1. 좌측 **SQL Editor** → New query
 2. 이 리포의 `database/schema.sql` 전체 복사 → 붙여넣기 → **Run**
 3. 정상 종료되면 좌측 **Table Editor** 에서 `users`, `channels`, `restaurants`, `appearances`, `votes`, `requests` 테이블이 보임
-4. 마이그레이션 파일들 ([database/migrations/](database/migrations/))은 `schema.sql` 에 모두 포함되어 있으니 신규 환경에선 따로 실행할 필요 없음. **이미 운영 중인 DB** 만 새 파일을 차례로 실행:
-   - `0001_init.sql` ~ `0005_request_notice.sql` — 초기 + 요청 게시판
-   - `0006_daily_votes.sql` — 하루 1회 투표 (KST `vote_date` generated column + unique index)
-   - `0007_request_restaurant_edit.sql` — 맛집/영상 수정·삭제 요청 type + 컬럼
-   - `0008_reject_pending_restaurant_requests.sql` — (일회성) 옛 payload 스키마 요청 일괄 반려
+4. `database/migrations/` 의 파일들은 `schema.sql` 에 모두 포함되어 있어 신규 환경에선 따로 실행할 필요 없음. **이미 운영 중인 DB** 만 새 파일을 차례로 실행 (0006 → 0007 → 0008 순서).
 
 ### 3단계. 인증 (Auth) Provider 설정
 
@@ -222,28 +220,23 @@ npm run dev
 
 | Provider | 활성화 방법 |
 |---|---|
-| **Email** | 토글 On. 이메일 가입 즉시 활성화 원하면 **Confirm email** 옵션 Off (이메일 검증 메일 안 보냄) |
+| **Email** | 토글 On. 이메일 가입 즉시 활성화 원하면 **Confirm email** 옵션 Off |
 | **Google** | Google Cloud Console 에서 OAuth Client ID/Secret 생성 → Supabase 의 Google provider 에 입력 |
 | **Kakao** | 카카오 Developers 에서 OAuth Client ID/Secret → Supabase 에 입력 |
-| **Naver** | Supabase 가 기본 지원 안 함 → **Authentication → Providers → Custom** 으로 추가. authorize URL, token URL, userinfo URL 입력 ([Supabase Discussion #naver](https://github.com/supabase/auth/discussions) 참고) |
+| **Naver** | Supabase 가 기본 지원 안 함 → **Authentication → Providers → Custom** 으로 추가. authorize/token/userinfo URL 입력 |
 
 ### 4단계. URL 등록 (가장 자주 빠지는 단계)
 
 좌측 **Authentication → URL Configuration**:
 
-- **Site URL**: 로컬은 `http://localhost:3000`, 운영은 Vercel 도메인 (`https://your-app.vercel.app`).
+- **Site URL**: 로컬 `http://localhost:3000` → 운영은 [도메인 운영](#-도메인-운영-가이드) 단계에서 갱신
 - **Redirect URLs** (Add URL):
   - `http://localhost:3000/auth/callback`
-  - `https://your-app.vercel.app/auth/callback`
-  - (커스텀 도메인 추가 시 동일)
+  - 운영 도메인 등록 후엔: `https://white_eyes_matmap.com/auth/callback`, `https://xn--lo8h64a0d1a13a3lyqd.com/auth/callback` 등 모두 추가
 
 이게 안 되면 OAuth 로그인 후 콜백에서 "redirect_uri_mismatch" 오류.
 
-### 5단계. RLS (Row Level Security)
-
-`schema.sql` 이 이미 RLS 정책을 같이 만들어줌 (`public.users` 만 RLS 활성). 다른 테이블은 FastAPI 가 service_role 키로 RLS 우회.
-
-### 6단계. 첫 superadmin 만들기
+### 5단계. 첫 superadmin 만들기
 
 1. 앱에서 회원가입 (이메일 또는 OAuth)
 2. Supabase SQL Editor 에서:
@@ -252,7 +245,7 @@ npm run dev
    ```
 3. 다시 로그인하면 `/admin` 탭 접근 가능
 
-### 7단계. (선택) 초기 데이터 채우기
+### 6단계. (선택) 초기 데이터 채우기
 
 `/admin` 의 **채널 자동 수집** 에 YouTube 채널 핸들 입력 (`@sungsikyung` 등) → SSE 로 진행 상황 표시되며 영상 메타 → OpenAI 추출 → Kakao/Naver 매칭 → DB 저장.
 
@@ -272,7 +265,7 @@ python -m data.ingest_channels --handles "@sungsikyung,@bimirya" --max 100
 
 ### 1단계. Vercel 가입 + GitHub 연결
 
-1. https://vercel.com → GitHub 계정으로 가입 (권장)
+1. https://vercel.com → GitHub 계정으로 가입
 2. 첫 진입에서 GitHub 권한 허용 → 이 리포가 자동 노출
 
 ### 2단계. New Project
@@ -288,7 +281,7 @@ python -m data.ingest_channels --handles "@sungsikyung,@bimirya" --max 100
 
 ### 3단계. Environment Variables 등록
 
-같은 화면 또는 배포 후 **Settings → Environment Variables** 에서 다음 등록 (모두 Production + Preview + Development 체크):
+같은 화면 또는 배포 후 **Settings → Environment Variables** 에서 다음 등록 (Production + Preview + Development 모두 체크):
 
 | Name | Value | 비고 |
 |---|---|---|
@@ -296,92 +289,183 @@ python -m data.ingest_channels --handles "@sungsikyung,@bimirya" --max 100
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://xxx.supabase.co` | Supabase Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJ...` | Supabase anon public key |
 | `NEXT_PUBLIC_KAKAO_JS_KEY` | `...` | 카카오 JavaScript 키 (지도 SDK + 공유) |
-| `NEXT_PUBLIC_TOSS_QR` | `/tome.jpeg` 또는 외부 URL | 토스 QR 이미지. 없으면 토스 후원 버튼 자동 숨김 |
-| `NEXT_PUBLIC_KAKAOPAY_URL` | `https://qr.kakaopay.com/...` | 카카오페이 송금링크. 없으면 자동 숨김 |
+| `NEXT_PUBLIC_TOSS_QR` | `/tome.jpeg` | 토스 QR 이미지. 없으면 후원 버튼 자동 숨김 |
+| `NEXT_PUBLIC_KAKAOPAY_URL` | `https://qr.kakaopay.com/...` | 카카오페이 송금링크 |
 
-→ **Deploy** 클릭.
+→ **Deploy** 클릭. `https://baekahn-matjido.vercel.app` 같은 임시 도메인이 나옴.
 
-### 4단계. FastAPI 배포
+### 4단계. FastAPI 배포 (호스팅 비용 0원 옵션)
 
-Vercel 은 Next.js 만 서빙. FastAPI 는 별도 호스트가 필요.
+Vercel 은 Next.js 만 서빙. FastAPI 는 별도 호스트 필요. 모두 무료 옵션:
 
-**옵션 A — Fly.io (추천, 무료 한도 충분)**
+#### 옵션 A — Render Free Tier (가장 단순, 추천)
 
-1. https://fly.io 가입 + `brew install flyctl` (Mac)
-2. `flyctl auth login`
-3. 리포 루트에서:
-   ```bash
-   flyctl launch --no-deploy --copy-config --dockerfile app/api/Dockerfile
-   # 앱 이름, region(nrt = 도쿄) 등 선택
+> 15분 idle 시 sleep → 첫 요청에 ~30초 cold start. 트래픽 적은 초기 운영엔 충분.
+
+1. https://render.com → GitHub 가입
+2. **New +** → **Web Service** → 이 리포 연결
+3. 설정:
+   - **Root Directory**: `app/api`
+   - **Runtime**: Python 3
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: **Free**
+4. **Environment** 탭에서 시크릿 등록:
    ```
-4. 시크릿 등록:
-   ```bash
-   flyctl secrets set \
-     SUPABASE_URL=https://xxx.supabase.co \
-     SUPABASE_ANON_KEY=eyJ... \
-     SUPABASE_SERVICE_ROLE_KEY=eyJ... \
-     KAKAO_REST_API_KEY=... \
-     OPENAI_API_KEY=sk-... \
-     YOUTUBE_API_KEY=AIza... \
-     NAVER_CLIENT_ID=... \
-     NAVER_CLIENT_SECRET=...
+   SUPABASE_URL=https://xxx.supabase.co
+   SUPABASE_ANON_KEY=eyJ...
+   SUPABASE_SERVICE_ROLE_KEY=eyJ...
+   KAKAO_REST_API_KEY=...
+   OPENAI_API_KEY=sk-...
+   YOUTUBE_API_KEY=AIza...
+   NAVER_CLIENT_ID=...
+   NAVER_CLIENT_SECRET=...
+   ADMIN_EMAIL=you@example.com
    ```
-5. `flyctl deploy` → 배포 URL 확인 (예: `https://your-app.fly.dev`)
-6. 헬스체크: `curl https://your-app.fly.dev/healthz` → `{"ok": true}`
-7. Vercel 의 `NEXT_PUBLIC_API_BASE_URL` 을 이 URL 로 갱신 → Vercel 에서 **Redeploy**.
+5. Deploy → URL 받음 (예: `https://baekahn-matjido-api.onrender.com`)
+6. Vercel 의 `NEXT_PUBLIC_API_BASE_URL` 을 이 URL 로 갱신 → Vercel에서 **Redeploy**
+7. 헬스체크: `curl https://baekahn-matjido-api.onrender.com/healthz` → `{"ok": true}`
 
-**옵션 B — Railway**
+#### 옵션 B — Cloudflare Tunnel + 자체 PC (sleep 없음, 전기료만)
 
-1. https://railway.app → New Project → Deploy from GitHub repo
-2. Root Directory: `app/api`
-3. Service Settings → Variables 에 위 시크릿 등록
-4. Settings → Networking → **Generate Domain** → URL 받기
-5. 동일하게 Vercel 의 API_BASE_URL 갱신
+집에 항상 켜둘 PC/맥미니/라즈베리파이 있을 때.
 
-**옵션 C — 자체 서버 / 라즈베리파이 + ngrok (임시)**
+1. `flyctl auth login` 대신 https://dash.cloudflare.com → Zero Trust → Networks → Tunnels → Create
+2. 터널 이름 부여 → connector 설치 명령 복사 → 자체 PC 에서 실행
+3. Tunnel routes 에 hostname (예: `api.white_eyes_matmap.com`) → Service `http://localhost:8000`
+4. 자체 PC 에서 `uvicorn app.api.main:app --host 0.0.0.0 --port 8000` 항상 실행 (systemd / launchd / pm2)
+5. Vercel 의 `NEXT_PUBLIC_API_BASE_URL` = `https://api.white_eyes_matmap.com`
 
-- 로컬에서 `uvicorn app.api.main:app --host 0.0.0.0 --port 8000`
-- `ngrok http 8000` → 공개 URL 받아 Vercel 에 등록
-- 영구는 아님 — 데모용
+> Cloudflare Tunnel 은 완전 무료. 트래픽 제한 사실상 없음. PC 가 꺼지면 API 불가 — 데스크탑/홈서버 24h 가능 환경에서 추천.
 
 ### 5단계. 외부 콘솔에 운영 도메인 등록
 
-이 단계를 빠뜨리면 지도가 회색으로 뜨고, 카카오 공유 / OAuth 로그인이 실패함.
+(다음 [도메인 운영](#-도메인-운영-가이드) 섹션 마치고 와서 적용)
 
 | 콘솔 | 등록 위치 | 등록 값 |
 |---|---|---|
-| **Kakao Developers** | 내 애플리케이션 → 플랫폼 → **Web** → 사이트 도메인 | `https://your-app.vercel.app` (지도 SDK + 카카오 공유) |
+| **Kakao Developers** | 내 애플리케이션 → 플랫폼 → **Web** → 사이트 도메인 | `https://white_eyes_matmap.com`, `https://xn--lo8h64a0d1a13a3lyqd.com` 둘 다 추가 |
 | **Kakao Developers** | 카카오 로그인 → Redirect URI | `https://xxx.supabase.co/auth/v1/callback` |
-| **Naver Developers** | 애플리케이션 → API 설정 → 웹 서비스 URL | `https://your-app.vercel.app` |
-| **Google Cloud Console** | OAuth 클라이언트 → 승인된 자바스크립트 출처 / 리디렉션 URI | Vercel 도메인 + Supabase callback URL |
-| **Supabase** | Authentication → URL Configuration | Site URL = Vercel 도메인, Redirect URLs 에 `https://your-app.vercel.app/auth/callback` 추가 |
+| **Naver Developers** | 애플리케이션 → API 설정 → 웹 서비스 URL | 두 도메인 모두 |
+| **Google Cloud Console** | OAuth 클라이언트 → 승인된 자바스크립트 출처 / 리디렉션 URI | 두 도메인 + Supabase callback URL |
+| **Supabase** | Authentication → URL Configuration | Site URL = 주 도메인, Redirect URLs 에 두 도메인의 `/auth/callback` 모두 추가 |
 
-### 6단계. 배포 후 헬스체크
+---
 
-| 항목 | 확인 |
+# 🌍 도메인 운영 가이드
+
+> 이 프로젝트는 **`white_eyes_matmap.com`** (영문) + **`백안맛지도.com`** (한글 IDN) 두 도메인으로 운영.
+> 한글 도메인은 Punycode 로 `xn--lo8h64a0d1a13a3lyqd.com` 로 표기됨 — 브라우저 주소창에는 한글 그대로 보임.
+
+## 비용 구조 (호스팅 0원, 도메인만)
+
+| 항목 | 비용 | 비고 |
+|---|---|---|
+| Vercel (웹) | 0원 | Free Plan, 100GB 월 트래픽 |
+| Supabase (DB + Auth) | 0원 | Free Plan, 500MB DB |
+| Render (API) | 0원 | Free Tier, 15분 idle sleep |
+| `white_eyes_matmap.com` | 약 **15,000원/년** | .com 일반 가격 |
+| `백안맛지도.com` | 약 **15,000원/년** | IDN .com 동일 가격 |
+| **총** | **약 30,000원/년** | 도메인만 |
+
+## 1단계. 도메인 등록
+
+### 영문 도메인 — `white_eyes_matmap.com`
+
+**옵션 1: Porkbun** (영문, 카드결제, 약 $11/년 ≈ 15,000원)
+
+1. https://porkbun.com → Sign up
+2. 검색창에 `white_eyes_matmap.com` → Add to cart
+3. WHOIS Privacy: **무료** 자동 적용
+4. Auto-renew: ON (도메인 만료 방지)
+5. 결제 (해외 카드 또는 PayPal)
+
+**옵션 2: 가비아** (한국, 한국 카드/계좌, 약 17,000원/년)
+
+1. https://www.gabia.com → 도메인 검색
+2. `white_eyes_matmap.com` 등록 → 가입 → 결제
+3. WHOIS 보호 설정
+
+### 한글 도메인 — `백안맛지도.com`
+
+**가비아 추천** — 한글 입력 인터페이스로 등록 편리:
+
+1. https://www.gabia.com 도메인 검색창에 직접 `백안맛지도.com` 입력 → 검색
+2. 표시되는 Punycode (`xn--lo8h64a0d1a13a3lyqd.com`) 확인 후 등록
+3. 결제 (한국 카드/계좌)
+
+> Porkbun 등 영문 등록자에서도 가능. 도메인 입력 시 `xn--lo8h64a0d1a13a3lyqd.com` Punycode 직접 입력 필요.
+> Punycode 변환: https://www.punycoder.com 에 `백안맛지도.com` 입력 → 변환 결과 사용.
+
+## 2단계. Vercel 에 도메인 연결
+
+1. Vercel 대시보드 → 프로젝트 선택 → **Settings → Domains**
+2. **Add Domain** → `white_eyes_matmap.com` 입력 → Add
+   - Vercel 이 표시하는 DNS 레코드 (보통 A 레코드 `76.76.21.21` 또는 nameserver) 메모
+3. **Add Domain** → `xn--lo8h64a0d1a13a3lyqd.com` 입력 → Add (한글 도메인도 Punycode 로)
+4. (선택) **Redirect** 설정 — 한쪽을 주 도메인으로, 다른 쪽을 redirect 로:
+   - 예: `xn--lo8h64a0d1a13a3lyqd.com` → `white_eyes_matmap.com` 으로 301 redirect
+   - 또는 둘 다 동일하게 서비스 (canonical 은 SEO 측면 한 쪽 권장)
+
+## 3단계. DNS 레코드 설정
+
+도메인 등록자(가비아/Porkbun) 의 DNS 관리 페이지로 이동.
+
+### A 레코드 방식 (가장 단순)
+
+| Type | Host/Name | Value | TTL |
+|---|---|---|---|
+| A | `@` (또는 도메인명) | `76.76.21.21` | 자동 |
+| CNAME | `www` | `cname.vercel-dns.com` | 자동 |
+
+> Vercel 이 "Configure DNS" 에서 보여주는 정확한 값을 따르세요. 위 IP 는 예시.
+
+### 옵션: Cloudflare DNS 사용 (CDN + 보안 + 분석 무료)
+
+1. https://dash.cloudflare.com → Add a Site → 도메인 입력
+2. Cloudflare 가 알려주는 2개의 nameserver 메모
+3. 도메인 등록자(가비아/Porkbun) → DNS 관리 → **nameserver 변경** → Cloudflare nameserver 로 교체
+4. Cloudflare DNS 에서 A 레코드 → Vercel IP 입력 + Proxy status: **DNS only** (Vercel 이 자체 CDN/SSL 처리하므로 Cloudflare proxy 켜면 충돌 가능)
+5. nameserver 전파 ~수시간
+
+> 영문/한글 도메인 둘 다 동일 절차.
+
+## 4단계. SSL 인증서
+
+Vercel 이 자동 발급 (Let's Encrypt). 도메인 추가 후 1-5분 내 자동 활성. 별도 작업 없음.
+
+## 5단계. 운영 도메인을 모든 외부 콘솔에 등록
+
+[Vercel 배포 5단계](#5단계-외부-콘솔에-운영-도메인-등록) 표 참고. **반드시 두 도메인 모두 등록**.
+
+## 6단계. 환경변수 갱신
+
+Vercel Project Settings → Environment Variables 에서 다음 값을 새 도메인으로 갱신:
+
+- (필요 시) `NEXT_PUBLIC_API_BASE_URL` — Cloudflare Tunnel 사용 시 `https://api.white_eyes_matmap.com`
+
+→ **Redeploy** 트리거.
+
+## 7단계. 헬스체크
+
+| 항목 | 확인 방법 |
 |---|---|
-| 웹 | `https://your-app.vercel.app/about` 정상 렌더 |
-| API | `https://your-api-host/healthz` → `{"ok": true}` |
-| 지도 | `/` 진입 후 카카오 지도 로드. 회색이면 Kakao 콘솔 도메인 등록 누락 |
-| 로그인 | `/auth/login` → OAuth 로그인 콜백 성공 |
+| 영문 도메인 | `https://white_eyes_matmap.com/about` 정상 렌더, SSL 자물쇠 표시 |
+| 한글 도메인 | 브라우저 주소창에 `백안맛지도.com` 입력 → 정상 렌더 |
+| API | `https://baekahn-matjido-api.onrender.com/healthz` → `{"ok": true}` |
+| 지도 | `/` 진입 후 카카오 지도 로드. 회색이면 Kakao 콘솔에 도메인 등록 누락 |
+| 로그인 | `/auth/login` → OAuth 로그인 콜백 성공 (두 도메인 모두) |
 | 검색 | 시도/시군구 datalist 자동완성 + 옵션 선택 시 핀 갱신 |
-| 투표 | 로그인 후 좋아요 클릭. 같은 버튼 재클릭 시 취소 |
+| 투표 | 로그인 후 좋아요 클릭, 같은 버튼 재클릭 시 취소 (KST 자정 갱신) |
 
-### 7단계. 운영 후 첫 superadmin 지정
+---
 
-배포 후 본인 회원가입 → Supabase SQL Editor 에서:
-
-```sql
-UPDATE public.users SET role = 'superadmin' WHERE email = 'you@example.com';
-```
-
-이제 운영 도메인의 `/admin` 접근 가능. 채널 자동 수집부터 시작하면 데이터가 빠르게 쌓입니다.
-
-### 운영 후 주기적으로
+## 🔧 운영 후 주기적 관리
 
 - **Vercel** 은 main 브랜치 push 시 자동 재배포. PR 은 Preview 환경 자동 생성.
-- **Fly.io / Railway** 는 GitHub Actions 연동 또는 `flyctl deploy` 수동.
-- DB 스키마 변경 시: 새 마이그레이션 파일을 `database/migrations/000N_*.sql` 로 추가 → Supabase SQL Editor 에서 실행 → 코드 push.
+- **Render Free** 는 main push 시 자동 재배포 (sleep 모드 유지). 트래픽 늘면 유료 플랜 고려 ($7/월부터).
+- DB 스키마 변경: 새 마이그레이션 파일을 `database/migrations/000N_*.sql` 로 추가 → Supabase SQL Editor 에서 실행 → 코드 push.
+- 도메인 만료 알림: 등록자 계정의 auto-renew **반드시 ON**.
 
 ---
 
@@ -391,7 +475,7 @@ UPDATE public.users SET role = 'superadmin' WHERE email = 'you@example.com';
 |---|---|
 | `python -m data.ingest_channels --handles "@sungsikyung,@bimirya" --max 100` | YouTube 채널 자동 수집 — 영상 메타 + OpenAI 추출 + Kakao/Naver 매칭 → DB |
 | `python -m data.seed_channel_thumbnails` | 채널 썸네일 일괄 보정 |
-| `python -m data.seed_naver_places --sleep 0.3` | 기존 식당의 naver_place_id 일괄 매칭 (분점 변형 자동 시도) |
+| `python -m data.seed_naver_places --sleep 0.3` | 기존 식당의 naver_place_id 일괄 매칭 |
 
 ---
 
@@ -404,10 +488,10 @@ PR 보내실 때 다음을 통과시켜 주세요:
 cd app/web && npx tsc --noEmit --noUnusedLocals --noUnusedParameters
 
 # Python 문법 sanity
-python3 -c "import ast; [ast.parse(open(f).read()) for f in __import__('glob').glob('app/api/**/*.py', recursive=True)]"
+python3 -c "import ast, glob; [ast.parse(open(f).read()) for f in glob.glob('app/api/**/*.py', recursive=True)]"
 ```
 
-UI 변경은 가능하면 `npm run dev` 로 띄워서 직접 클릭/탭 전환 확인.
+UI 변경은 `npm run dev` 로 띄워서 직접 클릭/탭 전환 확인.
 
 ---
 

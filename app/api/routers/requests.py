@@ -11,7 +11,6 @@
 """
 from __future__ import annotations
 
-import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from ..deps import get_current_user, require_superadmin, require_user
 from ..services.supabase_client import exec_with_retry, get_service_client
+from ..utils import norm_channel as _norm_channel
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -230,10 +230,6 @@ def bulk_delete_requests(body: BulkDeleteBody, _: dict = Depends(require_superad
     for i in range(0, len(body.ids), CHUNK):
         exec_with_retry(sb.table("requests").delete().in_("id", body.ids[i:i + CHUNK]))
     return {"ok": True, "deleted": len(body.ids)}
-
-
-def _norm_channel(name: str) -> str:
-    return re.sub(r"\s+", "", (name or "").strip())
 
 
 @router.post("/{rid}/grant-channel")
