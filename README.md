@@ -14,10 +14,10 @@
 popular_restaurant_by_broadcast/
 ├── app/
 │   ├── web/                # Next.js (Vercel 배포 대상)
-│   │   ├── public/         # 로고/아이콘
+│   │   ├── public/         # 로고/아이콘 + 후원 QR (tome.jpeg 등)
 │   │   └── src/
 │   │       ├── app/        # App Router (page.tsx = 라우트)
-│   │       ├── components/ # Map, NavTabs, VoteButton, VotePeriodCompare, admin/* ...
+│   │       ├── components/ # Map, NavTabs, VoteButton, VotePeriodCompare, DonationSection, admin/* ...
 │   │       └── lib/        # api / supabase / me / role / geocode / kakao-share
 │   └── api/                # FastAPI (REST + SSE)
 │       ├── routers/        # restaurants / channels / requests / votes / admin / auth / users
@@ -26,8 +26,8 @@ popular_restaurant_by_broadcast/
 │       ├── settings.py     # 시크릿 로더 (환경변수 우선 → config/secrets.json)
 │       └── main.py
 ├── database/
-│   ├── schema.sql          # 전체 스키마 (한 번에 실행)
-│   └── migrations/         # 0001 ~ 누적 마이그레이션
+│   ├── schema.sql          # 전체 스키마 (한 번에 실행 — 최신 상태)
+│   └── migrations/         # 0001 ~ 누적 마이그레이션 (운영 DB 증분 적용)
 ├── data/                   # 콘솔용 일회성/배치 스크립트
 │   ├── ingest_channels.py
 │   ├── seed_channel_thumbnails.py
@@ -47,7 +47,7 @@ popular_restaurant_by_broadcast/
 | `/` | **검색 (홈)**. 채널 타입/채널명/시도/시군구/동/카테고리/이름 필터 + 지도·목록·격자 보기 + 카카오톡 공유 |
 | `/vote` | 투표 규칙 안내 · 인기 급상승 영상 · 맛집/채널/영상 랭킹 · **기간별 투표 조회·비교** |
 | `/request` | 요청 게시판 — 채널 추가요청 / 관리자 요청 / 버그 / 기타 / 공지사항 |
-| `/about` | 사이트 소개 + 후원 |
+| `/about` | 사이트 소개 + 후원 (토스 QR 모달) — 검색·요청 탭으로 바로 가는 inline 링크 포함 |
 | `/admin` | **admin / superadmin** 전용. 회원·채널 관리, 좌표 보정, 채널 자동 수집, **맛집/영상 통합 관리** (입력·수정·삭제), **수정/삭제 요청 승인** (superadmin) |
 | `/auth/login` | 이메일+비밀번호 / 카카오 / 네이버 / 구글 로그인·회원가입 |
 | `/auth/callback` | OAuth 콜백 |
@@ -62,9 +62,6 @@ popular_restaurant_by_broadcast/
   **옵션과 정확 일치하거나 비어있을 때만** 백엔드 fetch 가 트리거 → 타자 중 지도 핀이 흔들리지 않음.
 - 백엔드는 sido/sigungu/dong/channel_name 에 대해 `ilike '%v%'` 부분일치 지원.
 - 모든 필터 상태가 URL 쿼리스트링에 기록 (`ct`/`cn`/`sido`/`sigungu`/`dong`/`cuisine`/`q`) → 카카오 공유 한 장으로 그대로 복원.
-- 결과 카운트는 `totalCount` (필터 전체) — viewport bounds 기반 fetch 의 `rows.length` 와 다른 값.
-
----
 
 ## 🗳 투표 규칙
 
@@ -72,45 +69,17 @@ popular_restaurant_by_broadcast/
 - 같은 날 안에서: 같은 버튼 재클릭 = 오늘 분 취소(DELETE) · 반대 버튼 = 오늘 분 전환(UPDATE).
 - 어제 이전 표는 그대로 누적 — 매일 한 표씩 쌓이는 구조. 집계 뷰가 누적 합산.
 - DB 무결성: `votes` 테이블에 `vote_date date GENERATED` (KST) + `UNIQUE(user_id, target_type, target_id, vote_date)`.
-
-### 랭킹 정렬
-
-`likes desc` → `dislikes asc` (같은 좋아요면 싫어요 많은 쪽이 뒤로) → `id desc` 안정 키. 맛집·채널·영상·검색 페이지네이션 모두 동일.
-
-### 기간별 조회 (`/vote` 하단)
-
-대상(맛집·채널·영상) + 기간(YYYY-MM-DD) 지정 → `GET /votes/score` 가 KST 자정 경계 inclusive 로 좋아요/싫어요/순점수 합산. 여러 항목을 누적해 한 표에서 비교 가능.
-
----
+- 랭킹 정렬: `likes desc` → `dislikes asc` → `id desc` (모든 랭킹 동일).
+- `/vote` 하단 **기간별 조회** — 대상(맛집·채널·영상) + 기간 지정 → 그 사이에 받은 좋아요/싫어요 합산. 누적해서 비교.
 
 ## 🛠 맛집/영상 통합 관리 (`/admin`)
 
-한 화면에서 **신규 입력 + 수정 + 삭제** 모두 처리. 채널을 먼저 선택하면 그 채널의 영상 일체가 datalist 옵션으로 노출되고, 가게 이름 입력으로 자동완성.
-
-- **admin** 으로 로그인 시 `charge_channel` 1개면 그 채널이 자동 선택, 여러 개면 첫 번째 자동 선택.
-- 가게 이름이 옵션과 정확 일치하면 **수정 모드** 진입 — 기존 값이 폼에 populate. (다른 필드를 사용자가 채운 상태에서는 자동 populate 안 함.)
-- 옵션과 일치 안 하면 **신규 등록 모드**.
-- 가게 이름 외 모든 필드: 주소, 카테고리, 전화, 네이버/카카오 지도 URL, 영상 URL/제목, 메모.
-
-### admin 의 수정·삭제 요청
-
-admin 이 신규 등록은 즉시 (`createRestaurant`), 수정·삭제는 superadmin 에게 요청.
-
-- `POST /restaurants/appearances/{aid}/edit-request` — payload 에 **변경 전(before) / 변경 후(after) 둘 다 스냅샷** 저장. 요청 후 다른 admin 이 또 수정해도 요청자가 본 시점이 보존됨.
-- `POST /restaurants/appearances/{aid}/delete-request` — 사유 옵션.
-- 수정 요청 버튼은 값이 변경됐을 때(`dirty`) 만 enable. 삭제 요청 버튼은 항상 enable.
-
-### superadmin 의 승인 (`/admin` 의 '맛집/영상 수정·삭제 요청')
-
-대기 중 요청을 모두 리스트업. 각 행에:
-
-- **수정 요청** — 4열 표 (구분 · 필드 · 변경 전 · → · 변경 후) 로 before/after 인라인 비교. 필드는 한국어 라벨, 변경 전 = 회색 + 취소선, 변경 후 = 굵은 초록.
-- **삭제 요청** — 빨강 강조 박스에 사유.
-- 행마다 **✅ 승인** / **🚫 반려** 버튼. 승인 시 `apply-restaurant-edit` / `apply-restaurant-delete` → restaurants/appearances 자동 update/delete + status='완료'. 반려는 status='반려'.
-
-> 맛집/영상 수정·삭제 요청은 `/request` 탭에는 노출되지 않음 (`type=restaurant_edit` 또는 `restaurant_delete` 명시 시에만 반환). `/admin` 의 전용 UI 에서만 다룸.
-
----
+- 한 화면에서 **신규 입력 + 수정 + 삭제** 모두 처리.
+- admin 로그인 시 `charge_channel` 1개면 자동 선택, 여러 개면 첫 번째 자동 선택.
+- 가게 이름 input 이 datalist — 옵션과 정확 일치 시 그 영상의 기존 값으로 폼 populate(수정 모드), 일치 안 하면 신규 모드.
+- **admin**: 신규는 즉시 등록, 수정·삭제는 superadmin 에게 요청 (payload 에 변경 전/후 둘 다 스냅샷).
+- **superadmin**: 모두 즉시 적용. 추가로 `/admin` 의 **맛집/영상 수정·삭제 요청** 패널에서 admin 요청을 한 화면에서 승인/반려.
+- 수정 요청 비교 UI: 4열 표 (구분 · 필드 · 변경 전 · → · 변경 후), 변경 전 = 회색 + 취소선, 변경 후 = 굵은 초록.
 
 ## 🔐 권한 모델
 
@@ -124,81 +93,42 @@ admin 이 신규 등록은 즉시 (`createRestaurant`), 수정·삭제는 supera
 
 ---
 
-## 🛠 로컬 개발 환경 셋업
+# 🛠 로컬 개발 환경 셋업
 
 ### 사전 준비
+
 - **Node.js** 20 이상 (`node -v`)
 - **Python** 3.12 이상 (`python3.12 -v`)
 - **Git**
 
-### 1) 저장소 클론
+### 1) 클론
 
 ```bash
 git clone https://github.com/<your-org>/popular_restaurant_by_broadcast.git
 cd popular_restaurant_by_broadcast
 ```
 
-### 2) Python 가상환경 + FastAPI 의존성
+### 2) 의존성 설치
 
 ```bash
+# 백엔드
 python3.12 -m venv venv
 source venv/bin/activate
 pip install -r app/api/requirements.txt
 pip install -r data/requirements.txt   # 콘솔 스크립트용 (선택)
+
+# 프론트엔드
+cd app/web && npm install && cd -
 ```
 
-### 3) 웹 의존성
-
-```bash
-cd app/web
-npm install
-cd -
-```
-
-### 4) 시크릿 작성 ([👉 자세히](#-시크릿secrets-관리))
+### 3) 시크릿 작성
 
 ```bash
 cp config/secrets.example.json config/secrets.json
 # 에디터로 열어 supabase / kakao / naver / openai / youtube 값 채우기
 ```
 
-웹 환경변수:
-
-```bash
-cp app/web/.env.example app/web/.env.local 2>/dev/null || true
-# .env.local 에 NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-#               NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_KAKAO_JS_KEY 등 입력
-```
-
-### 5) Supabase 스키마 적용 ([👉 자세히](#-supabase-셋업))
-
-`database/schema.sql` 을 Supabase SQL Editor 에 통째로 실행한 뒤, `database/migrations/` 의 최신 변경분을 순서대로 실행.
-
-### 6) 실행
-
-터미널 두 개 또는 백그라운드:
-
-```bash
-# (A) FastAPI
-source venv/bin/activate
-uvicorn app.api.main:app --reload
-# → http://localhost:8000/docs (Swagger)
-
-# (B) Next.js
-cd app/web
-npm run dev
-# → http://localhost:3000
-```
-
----
-
-## 🔑 시크릿(secrets) 관리
-
-### 백엔드 — `config/secrets.json`
-
-`app/api/settings.py` 가 **환경변수 우선 → 파일 fallback** 으로 읽습니다. 로컬은 파일 채워두기, 운영은 환경변수.
-
-`config/secrets.example.json` 을 복사해 채우세요:
+`config/secrets.json` 예시:
 
 ```json
 {
@@ -223,9 +153,7 @@ npm run dev
 | `youtube.api_key` | https://console.cloud.google.com → API 및 서비스 → 사용자 인증 정보 → YouTube Data API v3 활성화 |
 | `google_oauth.*` | Google Cloud Console — OAuth 클라이언트 ID |
 
-`config/secrets.json` 은 `.gitignore` 처리되어 있어 커밋되지 않습니다.
-
-### 프론트엔드 — `app/web/.env.local`
+웹 환경변수 (`app/web/.env.local`):
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
@@ -233,107 +161,227 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 NEXT_PUBLIC_KAKAO_JS_KEY=...
 
-# 후원 링크 (선택)
-NEXT_PUBLIC_BMC_URL=https://www.buymeacoffee.com/your_handle
-NEXT_PUBLIC_TOSS_URL=https://toss.me/your_handle
+# 후원 (선택 — 비어있으면 후원 섹션 자동 숨김)
+NEXT_PUBLIC_TOSS_QR=/tome.jpeg          # public/ 정적 이미지 경로 또는 외부 URL
 NEXT_PUBLIC_KAKAOPAY_URL=https://qr.kakaopay.com/...
-NEXT_PUBLIC_GITHUB_URL=https://github.com/your-org/popular_restaurant_by_broadcast
 ```
 
-값이 비어있으면 후원/GitHub 섹션은 자동으로 숨겨집니다.
+> `config/secrets.json`, `.env.local` 모두 `.gitignore` 처리되어 있어 커밋되지 않음.
+> 변경 후 dev 서버 재시작 필수 (Next.js 의 `NEXT_PUBLIC_*` 은 빌드 시 inline).
+
+### 4) Supabase 스키마 적용
+
+신규 환경: [Supabase Dashboard](https://supabase.com) → SQL Editor → `database/schema.sql` 통째로 붙여넣고 Run.
+운영 중인 DB: `database/migrations/` 의 새 파일만 순서대로 실행.
+
+### 5) 실행
+
+```bash
+# 터미널 A — FastAPI
+source venv/bin/activate
+uvicorn app.api.main:app --reload
+# → http://localhost:8000/docs (Swagger)
+
+# 터미널 B — Next.js
+cd app/web
+npm run dev
+# → http://localhost:3000
+```
 
 ---
 
-## 🗄 Supabase 셋업
+# 🗄 Supabase 셋업 (운영) — 단계별
 
-### 1) 프로젝트 생성
-- https://supabase.com 가입 → New project
-- Region: `Northeast Asia (Seoul)` 권장
-- 프로젝트 URL / anon key / service_role key 를 위 시크릿에 입력
+> 무료 플랜으로 시작 가능. 한국 사용자라면 Region 은 `Northeast Asia (Seoul)` 권장.
 
-### 2) 스키마 적용
+### 1단계. 프로젝트 생성
 
-대시보드 좌측 **SQL Editor** 에서 다음 순서로 실행:
+1. https://supabase.com 가입 → 우측 상단 **New project**
+2. Organization 선택 (또는 Create new) → 프로젝트 이름, DB password 설정
+3. Region: **Northeast Asia (Seoul)**
+4. Pricing plan: Free
+5. 생성 후 좌측 **Settings → API** 탭에서 다음 값 복사:
+   - `Project URL` → `supabase.url`
+   - `anon public` 키 → `supabase.anon_key`
+   - `service_role` 키 → `supabase.service_role_key` (절대 노출 X — 백엔드에서만 사용)
 
-1. `database/schema.sql` — 전체 스키마 (테이블·뷰·트리거 일괄)
-2. `database/migrations/` 의 최신분 적용:
-   - `0001_init.sql` — 초기 스키마
-   - `0002_username.sql`
-   - `0003_full_reset.sql`
-   - `0004_requests.sql` — 요청 게시판
-   - `0005_request_notice.sql` — 공지 타입 + 길이 제약 완화
+### 2단계. 스키마 적용
+
+1. 좌측 **SQL Editor** → New query
+2. 이 리포의 `database/schema.sql` 전체 복사 → 붙여넣기 → **Run**
+3. 정상 종료되면 좌측 **Table Editor** 에서 `users`, `channels`, `restaurants`, `appearances`, `votes`, `requests` 테이블이 보임
+4. 마이그레이션 파일들 ([database/migrations/](database/migrations/))은 `schema.sql` 에 모두 포함되어 있으니 신규 환경에선 따로 실행할 필요 없음. **이미 운영 중인 DB** 만 새 파일을 차례로 실행:
+   - `0001_init.sql` ~ `0005_request_notice.sql` — 초기 + 요청 게시판
    - `0006_daily_votes.sql` — 하루 1회 투표 (KST `vote_date` generated column + unique index)
-   - `0007_request_restaurant_edit.sql` — 맛집/영상 수정·삭제 요청 type + 컬럼 (restaurant_id, appearance_id, payload jsonb)
+   - `0007_request_restaurant_edit.sql` — 맛집/영상 수정·삭제 요청 type + 컬럼
    - `0008_reject_pending_restaurant_requests.sql` — (일회성) 옛 payload 스키마 요청 일괄 반려
 
-> `schema.sql` 은 매번 멱등하게 재생성하도록 작성되어 있고, 최신 마이그레이션 내용이 모두 포함된 상태입니다. 신규 환경은 `schema.sql` 한 번만 실행해도 OK.
-> 운영 중인 DB 는 새 마이그레이션을 누락하지 말 것.
+### 3단계. 인증 (Auth) Provider 설정
 
-### 3) Auth 설정
-- **Authentication → Providers**
-  - Email: Enable + (선택) `Confirm email` 끄기
-  - Google / Kakao / Naver 사용 시 각각 Client ID/Secret 등록 (Naver 는 Custom OAuth 로 추가)
-- **URL Configuration**
-  - Site URL: `http://localhost:3000` (운영 시 도메인)
-  - Redirect URLs: `http://localhost:3000/auth/callback`, 운영 도메인 동일 경로
+좌측 **Authentication → Providers**:
 
-### 4) RLS (Row Level Security)
-- `public.users` 만 RLS 활성화 (auth 와 연동). 그 외 테이블은 FastAPI service_role 키로 접근하므로 RLS 비활성/우회 정책 사용.
-- **anon 키** 로 직접 호출하는 곳 (검색 / 채널 목록 / 투표 점수 등) 은 SELECT 만 허용하는 정책.
+| Provider | 활성화 방법 |
+|---|---|
+| **Email** | 토글 On. 이메일 가입 즉시 활성화 원하면 **Confirm email** 옵션 Off (이메일 검증 메일 안 보냄) |
+| **Google** | Google Cloud Console 에서 OAuth Client ID/Secret 생성 → Supabase 의 Google provider 에 입력 |
+| **Kakao** | 카카오 Developers 에서 OAuth Client ID/Secret → Supabase 에 입력 |
+| **Naver** | Supabase 가 기본 지원 안 함 → **Authentication → Providers → Custom** 으로 추가. authorize URL, token URL, userinfo URL 입력 ([Supabase Discussion #naver](https://github.com/supabase/auth/discussions) 참고) |
 
-### 5) 첫 superadmin 만들기
+### 4단계. URL 등록 (가장 자주 빠지는 단계)
 
-회원가입 후, Supabase SQL Editor 에서:
+좌측 **Authentication → URL Configuration**:
+
+- **Site URL**: 로컬은 `http://localhost:3000`, 운영은 Vercel 도메인 (`https://your-app.vercel.app`).
+- **Redirect URLs** (Add URL):
+  - `http://localhost:3000/auth/callback`
+  - `https://your-app.vercel.app/auth/callback`
+  - (커스텀 도메인 추가 시 동일)
+
+이게 안 되면 OAuth 로그인 후 콜백에서 "redirect_uri_mismatch" 오류.
+
+### 5단계. RLS (Row Level Security)
+
+`schema.sql` 이 이미 RLS 정책을 같이 만들어줌 (`public.users` 만 RLS 활성). 다른 테이블은 FastAPI 가 service_role 키로 RLS 우회.
+
+### 6단계. 첫 superadmin 만들기
+
+1. 앱에서 회원가입 (이메일 또는 OAuth)
+2. Supabase SQL Editor 에서:
+   ```sql
+   UPDATE public.users SET role = 'superadmin' WHERE email = 'you@example.com';
+   ```
+3. 다시 로그인하면 `/admin` 탭 접근 가능
+
+### 7단계. (선택) 초기 데이터 채우기
+
+`/admin` 의 **채널 자동 수집** 에 YouTube 채널 핸들 입력 (`@sungsikyung` 등) → SSE 로 진행 상황 표시되며 영상 메타 → OpenAI 추출 → Kakao/Naver 매칭 → DB 저장.
+
+또는 콘솔에서 일괄 실행:
+
+```bash
+python -m data.ingest_channels --handles "@sungsikyung,@bimirya" --max 100
+```
+
+좌표 비어있는 맛집은 `/admin` → **🌏 기존 좌표 일괄 보정** (superadmin only) 으로 한 번에 정리.
+
+---
+
+# 🌐 Vercel 배포 — 단계별
+
+> 모노레포라 root directory 설정이 필수. 못 하면 build 가 root 의 빈 package.json 을 보고 실패.
+
+### 1단계. Vercel 가입 + GitHub 연결
+
+1. https://vercel.com → GitHub 계정으로 가입 (권장)
+2. 첫 진입에서 GitHub 권한 허용 → 이 리포가 자동 노출
+
+### 2단계. New Project
+
+1. Vercel 대시보드 → **Add New → Project**
+2. 이 리포 선택 → **Import**
+3. 설정 화면에서:
+   - **Project Name**: `baekahn-matjido` (자유)
+   - **Framework Preset**: Next.js (자동 감지)
+   - **Root Directory**: **`app/web`** 로 변경 ⚠️ (Edit 버튼 클릭해서 수정)
+   - **Build Command**: 자동 (`next build`)
+   - **Output Directory**: 자동 (`.next`)
+
+### 3단계. Environment Variables 등록
+
+같은 화면 또는 배포 후 **Settings → Environment Variables** 에서 다음 등록 (모두 Production + Preview + Development 체크):
+
+| Name | Value | 비고 |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | `https://your-fastapi-host` | FastAPI 배포 호스트. 4단계 참고 |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://xxx.supabase.co` | Supabase Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJ...` | Supabase anon public key |
+| `NEXT_PUBLIC_KAKAO_JS_KEY` | `...` | 카카오 JavaScript 키 (지도 SDK + 공유) |
+| `NEXT_PUBLIC_TOSS_QR` | `/tome.jpeg` 또는 외부 URL | 토스 QR 이미지. 없으면 토스 후원 버튼 자동 숨김 |
+| `NEXT_PUBLIC_KAKAOPAY_URL` | `https://qr.kakaopay.com/...` | 카카오페이 송금링크. 없으면 자동 숨김 |
+
+→ **Deploy** 클릭.
+
+### 4단계. FastAPI 배포
+
+Vercel 은 Next.js 만 서빙. FastAPI 는 별도 호스트가 필요.
+
+**옵션 A — Fly.io (추천, 무료 한도 충분)**
+
+1. https://fly.io 가입 + `brew install flyctl` (Mac)
+2. `flyctl auth login`
+3. 리포 루트에서:
+   ```bash
+   flyctl launch --no-deploy --copy-config --dockerfile app/api/Dockerfile
+   # 앱 이름, region(nrt = 도쿄) 등 선택
+   ```
+4. 시크릿 등록:
+   ```bash
+   flyctl secrets set \
+     SUPABASE_URL=https://xxx.supabase.co \
+     SUPABASE_ANON_KEY=eyJ... \
+     SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+     KAKAO_REST_API_KEY=... \
+     OPENAI_API_KEY=sk-... \
+     YOUTUBE_API_KEY=AIza... \
+     NAVER_CLIENT_ID=... \
+     NAVER_CLIENT_SECRET=...
+   ```
+5. `flyctl deploy` → 배포 URL 확인 (예: `https://your-app.fly.dev`)
+6. 헬스체크: `curl https://your-app.fly.dev/healthz` → `{"ok": true}`
+7. Vercel 의 `NEXT_PUBLIC_API_BASE_URL` 을 이 URL 로 갱신 → Vercel 에서 **Redeploy**.
+
+**옵션 B — Railway**
+
+1. https://railway.app → New Project → Deploy from GitHub repo
+2. Root Directory: `app/api`
+3. Service Settings → Variables 에 위 시크릿 등록
+4. Settings → Networking → **Generate Domain** → URL 받기
+5. 동일하게 Vercel 의 API_BASE_URL 갱신
+
+**옵션 C — 자체 서버 / 라즈베리파이 + ngrok (임시)**
+
+- 로컬에서 `uvicorn app.api.main:app --host 0.0.0.0 --port 8000`
+- `ngrok http 8000` → 공개 URL 받아 Vercel 에 등록
+- 영구는 아님 — 데모용
+
+### 5단계. 외부 콘솔에 운영 도메인 등록
+
+이 단계를 빠뜨리면 지도가 회색으로 뜨고, 카카오 공유 / OAuth 로그인이 실패함.
+
+| 콘솔 | 등록 위치 | 등록 값 |
+|---|---|---|
+| **Kakao Developers** | 내 애플리케이션 → 플랫폼 → **Web** → 사이트 도메인 | `https://your-app.vercel.app` (지도 SDK + 카카오 공유) |
+| **Kakao Developers** | 카카오 로그인 → Redirect URI | `https://xxx.supabase.co/auth/v1/callback` |
+| **Naver Developers** | 애플리케이션 → API 설정 → 웹 서비스 URL | `https://your-app.vercel.app` |
+| **Google Cloud Console** | OAuth 클라이언트 → 승인된 자바스크립트 출처 / 리디렉션 URI | Vercel 도메인 + Supabase callback URL |
+| **Supabase** | Authentication → URL Configuration | Site URL = Vercel 도메인, Redirect URLs 에 `https://your-app.vercel.app/auth/callback` 추가 |
+
+### 6단계. 배포 후 헬스체크
+
+| 항목 | 확인 |
+|---|---|
+| 웹 | `https://your-app.vercel.app/about` 정상 렌더 |
+| API | `https://your-api-host/healthz` → `{"ok": true}` |
+| 지도 | `/` 진입 후 카카오 지도 로드. 회색이면 Kakao 콘솔 도메인 등록 누락 |
+| 로그인 | `/auth/login` → OAuth 로그인 콜백 성공 |
+| 검색 | 시도/시군구 datalist 자동완성 + 옵션 선택 시 핀 갱신 |
+| 투표 | 로그인 후 좋아요 클릭. 같은 버튼 재클릭 시 취소 |
+
+### 7단계. 운영 후 첫 superadmin 지정
+
+배포 후 본인 회원가입 → Supabase SQL Editor 에서:
 
 ```sql
 UPDATE public.users SET role = 'superadmin' WHERE email = 'you@example.com';
 ```
 
-### 6) 데이터 채우기
-- `/admin` → **채널 자동 수집** 에 채널 핸들 입력 (예: `@sungsikyung`) 또는
-- 콘솔: `python -m data.ingest_channels --handles @sungsikyung,@bimirya --max 50`
-- 좌표 비어있으면 `/admin` → **🌏 기존 좌표 보정** (superadmin only)
-- 네이버 place_id 보정: `python -m data.seed_naver_places`
+이제 운영 도메인의 `/admin` 접근 가능. 채널 자동 수집부터 시작하면 데이터가 빠르게 쌓입니다.
 
----
+### 운영 후 주기적으로
 
-## 🌐 Vercel 호스팅 (웹)
-
-### 1) GitHub 연동
-- Vercel → New Project → Import Git Repository → 이 리포 선택
-- **Root Directory** 를 `app/web` 으로 지정 (중요 — 모노레포라 자동 감지 안 됨)
-- Framework Preset: **Next.js** (자동)
-
-### 2) 환경변수 등록
-Vercel Project Settings → **Environment Variables** 에 다음을 등록 (Production + Preview):
-
-```
-NEXT_PUBLIC_API_BASE_URL       https://<fastapi-host>            # ngrok / fly.io / 자체 서버
-NEXT_PUBLIC_SUPABASE_URL       https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY  eyJ...
-NEXT_PUBLIC_KAKAO_JS_KEY       ...
-NEXT_PUBLIC_BMC_URL            (선택)
-NEXT_PUBLIC_TOSS_URL           (선택)
-NEXT_PUBLIC_KAKAOPAY_URL       (선택)
-NEXT_PUBLIC_GITHUB_URL         (선택)
-```
-
-### 3) Kakao / Naver / Supabase 콘솔에 도메인 추가
-- **Kakao Developers** → 내 애플리케이션 → 플랫폼 → Web → 사이트 도메인에 `https://your-app.vercel.app` 추가 (지도 SDK / 카카오 공유)
-- **Naver Developers** → 애플리케이션 → Web 서비스 URL 에 vercel 도메인 추가
-- **Supabase** → Authentication → URL Configuration 의 Site URL 과 Redirect URLs 갱신
-
-### 4) FastAPI 배포 (필요 시)
-- 가장 빠른 옵션: **Fly.io** 또는 **Railway** 에 `app/api/Dockerfile` 로 배포. 무료/소규모 가능.
-- 또는 **Vercel Python Runtime** — 다만 SSE 스트리밍 제약 있어 추천 안 함.
-- 또는 자체 서버 / 라즈베리파이 + ngrok 으로 임시 노출 가능.
-
-FastAPI 운영 시 `app/api/settings.py` 는 환경변수에서 읽으므로, 호스팅 환경의 **환경변수** 에 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `KAKAO_REST_API_KEY`, `OPENAI_API_KEY`, `YOUTUBE_API_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` 등을 등록하세요.
-
-### 5) 배포 후 헬스체크
-- 웹: `https://your-app.vercel.app/about` 정상 렌더
-- API: `https://<fastapi-host>/healthz` → `{"ok": true}`
-- 지도: Kakao 콘솔에 도메인 등록 안 되어 있으면 핀이 빈 회색으로 보임
+- **Vercel** 은 main 브랜치 push 시 자동 재배포. PR 은 Preview 환경 자동 생성.
+- **Fly.io / Railway** 는 GitHub Actions 연동 또는 `flyctl deploy` 수동.
+- DB 스키마 변경 시: 새 마이그레이션 파일을 `database/migrations/000N_*.sql` 로 추가 → Supabase SQL Editor 에서 실행 → 코드 push.
 
 ---
 
