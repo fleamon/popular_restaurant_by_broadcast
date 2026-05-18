@@ -122,14 +122,19 @@ export default function RestaurantDetailPage() {
         {featured?.source_url && (
           <ExtLink href={featured.source_url} className="bg-red-600 text-white">▶ YouTube 에서 보기</ExtLink>
         )}
-        {restaurant.naver_map_url && (
-          <ExtLink href={restaurant.naver_map_url} className="bg-[#03C75A] text-white">📍 네이버 지도</ExtLink>
-        )}
-        {restaurant.kakao_map_url && (
-          <ExtLink href={restaurant.kakao_map_url} className="bg-[#FEE500] text-black">
-            📍 다음 지도{restaurant.kakao_rating ? ` ⭐ ${restaurant.kakao_rating.toFixed(1)}` : ""}
-          </ExtLink>
-        )}
+        {/* 네이버/다음 지도 — URL 이 DB 에 없으면 가게 이름으로 검색 fallback (핀 모달과 동일 동작). */}
+        <ExtLink
+          href={restaurant.naver_map_url ?? `https://map.naver.com/v5/search/${encodeURIComponent(restaurant.current_name)}`}
+          className="bg-[#03C75A] text-white"
+        >
+          📍 네이버 지도
+        </ExtLink>
+        <ExtLink
+          href={restaurant.kakao_map_url ?? `https://map.kakao.com/?q=${encodeURIComponent(restaurant.current_name)}`}
+          className="bg-[#FEE500] text-black"
+        >
+          📍 다음 지도{restaurant.kakao_rating ? ` ⭐ ${restaurant.kakao_rating.toFixed(1)}` : ""}
+        </ExtLink>
       </div>
 
       <ShareBar restaurant={restaurant} featured={featured} ytId={ytId} />
