@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import DonationSection from "@/components/DonationSection";
 import PageHeader from "@/components/ui/PageHeader";
 
@@ -38,8 +40,11 @@ export default function AboutPage() {
         title="백안맛지도란?"
         subtitle={
           <>
-            TV · YouTube · 블로그에 소개된 <span className="text-brand">전국 맛집</span> 을
+            TV · YouTube · 블로그에 소개된{" "}
+            <Link href="/" className="text-brand underline-offset-2 hover:underline">전국 맛집</Link> 을
             지도 한 장으로 훑어보고, 좋아요/싫어요로 랭킹을 만드는 프로젝트 입니다.
+            <br></br>{" "}<strong>사용자와 함께 만들어가요</strong> — 채널 추가·버그 제보·아이디어는{" "}
+            <Link href="/request" className="text-brand underline-offset-2 hover:underline">요청 탭</Link> 으로 보내주세요.
           </>
         }
       />
