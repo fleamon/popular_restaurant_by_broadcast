@@ -1,11 +1,7 @@
+import DonationSection from "@/components/DonationSection";
 import PageHeader from "@/components/ui/PageHeader";
 
 export const metadata = { title: "소개 · 백안맛지도" };
-
-// 후원 URL — 환경변수에서 받음. 값이 없으면 해당 버튼은 자동 숨김.
-// 로컬: app/web/.env.local — 운영: Vercel Project Settings → Environment Variables.
-const TOSS_URL     = process.env.NEXT_PUBLIC_TOSS_URL     ?? "";
-const KAKAOPAY_URL = process.env.NEXT_PUBLIC_KAKAOPAY_URL ?? "";
 
 // 주요 기능 카드 — 여기 배열을 수정하면 페이지의 카드 그리드가 자동으로 갱신됨.
 const FEATURES: { title: string; desc: string }[] = [
@@ -36,8 +32,6 @@ const FEATURES: { title: string; desc: string }[] = [
 ];
 
 export default function AboutPage() {
-  const hasDonation = !!(TOSS_URL || KAKAOPAY_URL);
-
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <PageHeader
@@ -68,27 +62,7 @@ export default function AboutPage() {
         </ul>
       </section>
 
-      {/* 후원 — 환경변수 채워진 항목이 하나라도 있을 때만 섹션 노출 */}
-      {hasDonation && (
-        <section className="space-y-3 rounded-xl border border-neutral-200 bg-brand-surface p-5">
-          <h2 className="font-soft text-xl font-bold tracking-tight text-brand">개발자 후원</h2>
-          <p className="text-sm text-neutral-600">서버·도메인·API 호출 비용에 큰 힘이 됩니다 🙇‍♀️</p>
-          <div className="flex flex-wrap gap-2 text-sm">
-            {TOSS_URL && (
-              <a href={TOSS_URL} target="_blank" rel="noreferrer"
-                 className="rounded-md border border-brand px-3 py-2 font-bold text-brand hover:bg-white">
-                💙 토스로 후원
-              </a>
-            )}
-            {KAKAOPAY_URL && (
-              <a href={KAKAOPAY_URL} target="_blank" rel="noreferrer"
-                 className="rounded-md border border-brand px-3 py-2 font-bold text-brand hover:bg-white">
-                🟡 카카오페이 QR
-              </a>
-            )}
-          </div>
-        </section>
-      )}
+      <DonationSection />
     </div>
   );
 }
