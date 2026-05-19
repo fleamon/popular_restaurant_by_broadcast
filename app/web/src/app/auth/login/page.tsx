@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  sendPasswordReset,
   signInWithEmail,
   signInWithProvider,
   signUpWithEmail,
 } from "@/lib/auth";
 import { GoogleLogo, KakaoLogo, NaverLogo } from "@/components/SocialLogos";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "signup" | "forgot";
 
 const INPUT_CLS =
   "w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base font-bold text-black focus:border-brand focus:outline-none";
@@ -29,7 +30,9 @@ export default function LoginPage() {
         </TabBtn>
       </div>
 
-      {mode === "login" ? <LoginForm /> : <SignupForm />}
+      {mode === "login"  && <LoginForm onForgot={() => setMode("forgot")} />}
+      {mode === "signup" && <SignupForm />}
+      {mode === "forgot" && <ForgotForm onBack={() => setMode("login")} />}
     </div>
   );
 }
@@ -51,7 +54,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 // ─────────────────────────────────────────────────────────────────────
 // 로그인 폼 (이메일 + 비밀번호) + 소셜 로그인
 // ─────────────────────────────────────────────────────────────────────
-function LoginForm() {
+function LoginForm({ onForgot }: { onForgot: () => void }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -103,6 +106,15 @@ function LoginForm() {
         >
           {busy ? "로그인 중…" : "로그인"}
         </button>
+        <div className="pt-1 text-right text-xs">
+          <button
+            type="button"
+            onClick={onForgot}
+            className="font-bold text-brand hover:underline"
+          >
+            비밀번호를 잊으셨나요?
+          </button>
+        </div>
       </form>
 
       <div className="relative text-center text-xs text-neutral-400">
@@ -212,6 +224,66 @@ function SignupForm() {
       <p className="pt-1 text-xs text-neutral-400">
         비밀번호는 관리자도 알 수 없게 안전하게 저장합니다.
       </p>
+    </form>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 비밀번호 재설정 — 이메일로 재설정 링크 발송
+// 메일의 링크를 클릭하면 /auth/reset-password 페이지로 이동 → 새 비번 입력
+// ─────────────────────────────────────────────────────────────────────
+function ForgotForm({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setDone(null);
+    setBusy(true);
+    try {
+      await sendPasswordReset(email);
+      setDone("✉️ 재설정 링크를 메일로 보냈습니다. 메일함을 확인해 링크를 클릭하세요.");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "메일 발송 실패");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3 rounded-xl border border-neutral-200 bg-white p-5">
+      <p className="text-sm font-bold text-neutral-700">
+        가입한 이메일 주소를 입력하시면 비밀번호 재설정 링크를 보내드립니다.
+      </p>
+      <Field label="이메일" required>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          className={INPUT_CLS}
+          autoFocus
+        />
+      </Field>
+      {err && <p className="text-sm text-red-500">{err}</p>}
+      {done && <p className="text-sm font-bold text-brand">{done}</p>}
+      <button
+        type="submit"
+        disabled={busy || !email}
+        className="w-full rounded-md bg-brand px-4 py-2.5 font-bold text-brand-fg hover:bg-brand-hover disabled:opacity-50"
+      >
+        {busy ? "발송 중…" : "📩 재설정 링크 보내기"}
+      </button>
+      <button
+        type="button"
+        onClick={onBack}
+        className="w-full text-xs font-bold text-neutral-500 hover:text-brand"
+      >
+        ← 로그인으로 돌아가기
+      </button>
     </form>
   );
 }

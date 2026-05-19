@@ -62,6 +62,32 @@ export type SignUpInput = {
   nickname: string;
 };
 
+/** 비밀번호 재설정 메일 전송 — 로그인 못 한 상태에서도 호출 가능.
+ *  메일의 링크 클릭 → redirectTo 페이지 (/auth/reset-password) 에서 새 비번 입력.
+ */
+export async function sendPasswordReset(email: string) {
+  const sb = getSupabaseBrowser();
+  try {
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: `${location.origin}/auth/reset-password`,
+    });
+    if (error) throw error;
+  } catch (e: unknown) {
+    throw mapAuthError(e);
+  }
+}
+
+/** 새 비밀번호 적용 — reset-password 페이지에서 호출. 로그인된 세션(또는 recovery 세션)이 있을 때만 동작. */
+export async function updatePassword(newPassword: string) {
+  const sb = getSupabaseBrowser();
+  try {
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  } catch (e: unknown) {
+    throw mapAuthError(e);
+  }
+}
+
 export async function signUpWithEmail({ email, password, nickname }: SignUpInput) {
   const sb = getSupabaseBrowser();
   // 비밀번호는 Supabase Auth 가 안전하게 해싱해 저장 (관리자도 평문을 알 수 없음).
