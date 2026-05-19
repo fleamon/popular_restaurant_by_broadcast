@@ -9,7 +9,7 @@ import {
   signInWithProvider,
   signUpWithEmail,
 } from "@/lib/auth";
-import { GoogleLogo, KakaoLogo, NaverLogo } from "@/components/SocialLogos";
+import { GoogleLogo } from "@/components/SocialLogos";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -123,14 +123,7 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <SocialBtn onClick={() => void signInWithProvider("kakao")} className="bg-[#FEE500] text-black">
-          <KakaoLogo />
-          <span>카카오로 로그인</span>
-        </SocialBtn>
-        <SocialBtn onClick={() => void signInWithProvider("naver")} className="bg-[#03C75A] text-white">
-          <NaverLogo />
-          <span>네이버로 로그인</span>
-        </SocialBtn>
+        {/* 카카오: 이메일 권한 검수 대기, 네이버: Supabase Free 미지원 — 일단 구글만 노출 */}
         <SocialBtn onClick={() => void signInWithProvider("google")} className="border border-neutral-300 bg-white text-neutral-800">
           <GoogleLogo />
           <span>구글로 로그인</span>
