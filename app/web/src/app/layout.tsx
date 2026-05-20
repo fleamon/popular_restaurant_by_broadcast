@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 
 import Header from "@/components/Header";
 import "./globals.css";
@@ -17,7 +18,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ko">
       <body className="min-h-screen">
         <Header />
-        <main className="mx-auto max-w-6xl px-4 py-3">{children}</main>
+        {/* Suspense — useSearchParams 등 client hook 이 정적 prerender 시 Suspense boundary 를 요구 (Next 16). */}
+        <main className="mx-auto max-w-6xl px-4 py-3">
+          <Suspense fallback={null}>{children}</Suspense>
+        </main>
       </body>
     </html>
   );
