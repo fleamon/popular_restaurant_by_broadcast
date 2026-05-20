@@ -7,10 +7,23 @@
  *  → 로컬 dev 에서 공유를 눌러도 (1) 이 채워져 있으면 카드의 링크가 운영 도메인이 됨.
  *  → 빈 값이면 (2) fallback (그 외 사이트 origin).
  */
+// localhost / 사설망 패턴 — 운영 공유 URL 로는 절대 박혀선 안 됨
+const LOCAL_ORIGIN_RE = /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)(:\d+)?$/i;
+
+function looksLocal(url: string): boolean {
+  return LOCAL_ORIGIN_RE.test(url.replace(/\/+$/, ""));
+}
+
 export function siteOrigin(): string {
-  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  if (fromEnv) return fromEnv.replace(/\/+$/, ""); // trailing slash 제거
-  if (typeof window !== "undefined") return window.location.origin;
+  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+  // env 가 비어있거나 localhost 면 무시 — Vercel 빌드 env 에 실수로 localhost 가 박혔어도 안전.
+  if (fromEnv && !looksLocal(fromEnv)) return fromEnv;
+  if (typeof window !== "undefined") {
+    const origin = window.location.origin;
+    // 브라우저가 실제로 운영에서 떠 있으면 그 origin 사용.
+    // (로컬 dev 에선 localhost — 카카오 공유 카드도 localhost 가 박히지만, 그건 의도된 동작)
+    return origin;
+  }
   return "";
 }
 
