@@ -17,7 +17,18 @@ app = FastAPI(title="백안맛지도 API", version="0.1.0", redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://*.vercel.app"],
+    allow_origins=[
+        "http://localhost:3000",
+        # Vercel 운영(고정) 도메인
+        "https://popular-restaurant-by-broadcast.vercel.app",
+        # 자체 도메인 — 운영 시 활성화
+        "https://www.white_eyes_matmap.com",
+        "https://white_eyes_matmap.com",
+        "https://www.xn--hq1bm9i1sp.com",
+        "https://xn--hq1bm9i1sp.com",
+    ],
+    # Vercel Preview deploy 도 허용 — regex 매칭. (`allow_origins` 의 "*.vercel.app" 는 글자그대로 비교돼 안 됨)
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
