@@ -10,6 +10,7 @@ import RestaurantList from "@/components/RestaurantList";
 import ViewToggle, { type SearchView } from "@/components/ViewToggle";
 import { api, type Channel, type Region, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
+import { absoluteUrl, siteShareUrl } from "@/lib/site";
 
 // 뷰별 페이지네이션 사이즈 — grid 는 5열 × 6줄 = 30
 const LIST_PAGE_SIZE = 20;
@@ -261,9 +262,10 @@ export default function HomePage() {
     return undefined;
   }, [q, rows, dong, sigungu, sido]);
 
-  // 카카오톡 공유 — 현재 페이지 URL 그대로(필터 포함) + 필터 요약
+  // 카카오톡 공유 — 운영 도메인(NEXT_PUBLIC_SITE_URL) 기준의 절대 URL.
+  // 로컬 dev 에서 눌러도 카드의 링크는 운영 도메인으로 박힘.
   async function shareCurrent() {
-    const url = typeof window !== "undefined" ? window.location.href : "";
+    const url = siteShareUrl();
     const locationBits = [sido, sigungu, dong].filter(Boolean).join(" ");
     const filterBits = [
       locationBits,
@@ -275,7 +277,7 @@ export default function HomePage() {
     // 화면 헤더와 동일한 소스: totalCount(필터 기준 전체) — rows.length 는 viewport/페이지 단위라 다른 값.
     const count = totalCount ?? rows.length;
     const description = `${count}개의 맛집 결과 — 백안맛지도에서 확인하기`;
-    const imageUrl = `${window.location.origin}/white_eyes_blue.png`;
+    const imageUrl = absoluteUrl("/white_eyes_blue.png");
     const ok = await shareKakaoTalk({ title, description, imageUrl, url });
     if (!ok) {
       try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }

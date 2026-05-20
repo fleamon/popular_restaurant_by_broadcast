@@ -37,6 +37,39 @@ export default function ChannelIngest({ onChanged }: { onChanged: () => void }) 
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [running]);
 
+  // 실행 중 Wake Lock — 브라우저가 백그라운드 탭 freeze / 화면 dim 으로 fetch 스트림을
+  // 멈추는 것을 막음. 사용자 권한 자동 (HTTPS 필요). 실패 시 silent.
+  useEffect(() => {
+    if (!running) return;
+    let sentinel: WakeLockSentinel | null = null;
+    let released = false;
+
+    async function acquire() {
+      try {
+        // 일부 브라우저(특히 Safari) 미지원 — 실패해도 진행
+        const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<WakeLockSentinel> } }).wakeLock;
+        if (!wl) return;
+        sentinel = await wl.request("screen");
+        // 탭이 다시 visible 되면 wake lock 이 자동 release 될 수 있어 재획득
+        sentinel.addEventListener("release", () => {
+          if (!released && document.visibilityState === "visible") void acquire();
+        });
+      } catch { /* permission/unsupported — ignore */ }
+    }
+    void acquire();
+
+    function onVisible() {
+      if (document.visibilityState === "visible" && !sentinel) void acquire();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      released = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      if (sentinel) sentinel.release().catch(() => {});
+    };
+  }, [running]);
+
   function appendEvent(ev: IngestEvent) {
     setEvents((prev) => {
       const next = prev.length >= MAX_LOG_EVENTS ? prev.slice(prev.length - MAX_LOG_EVENTS + 1) : prev;

@@ -179,6 +179,12 @@ export const api = {
     return request<{ likes: number; dislikes: number; net_score: number }>(`/votes/score?${qs}`);
   },
 
+  // visits — 좌측 하단 방문자 위젯
+  trackVisit: (visitor_id: string) =>
+    request<{ ok: boolean }>(`/visits/track`, { method: "POST", body: JSON.stringify({ visitor_id }) }),
+  visitStats: () =>
+    request<{ today: number; total: number }>(`/visits/stats`),
+
   // admin — channel auto-ingest (SSE)
   ingestChannel: (handle: string, max_videos: number) =>
     streamSSE<IngestEvent>(`/admin/ingest-channel`, { handle, max_videos }),

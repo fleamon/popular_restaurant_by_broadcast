@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 
 import Header from "@/components/Header";
+import VisitorCounter from "@/components/VisitorCounter";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,6 +23,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto max-w-6xl px-4 py-3">
           <Suspense fallback={null}>{children}</Suspense>
         </main>
+        {/* 좌측 하단 fixed 방문자 카운터 — 모든 페이지에 노출 */}
+        <VisitorCounter />
       </body>
     </html>
   );

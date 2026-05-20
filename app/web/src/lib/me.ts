@@ -9,6 +9,7 @@ import { getSupabaseBrowser } from "./supabase";
 const SESSION_MAX_MS = 8 * 60 * 60 * 1000; // 8시간 (디버그: 1 * 60 * 1000 = 1분)
 // const SESSION_MAX_MS = 1 * 60 * 1000; // 디버그용 1분
 const SESSION_KEY = "session_start";
+const ROLE_KEY = "current_role"; // forceLogoutOnExpiry 가 useMe 의 closure 없이도 role 확인 가능하게 캐싱.
 // ⏱ 폴링 간격 — 만료 검사 주기. SESSION_MAX_MS 보다 짧아야 의미 있음.
 const POLL_MS = Math.min(60 * 1000, Math.max(5 * 1000, SESSION_MAX_MS / 4));
 
@@ -17,6 +18,10 @@ let _expiring = false;
 
 async function forceLogoutOnExpiry(): Promise<boolean> {
   if (_expiring) return false;
+  // superadmin 은 세션 만료 안 함 — 채널 자동 수집 같은 장시간 관리 작업을 보호.
+  if (typeof window !== "undefined" && localStorage.getItem(ROLE_KEY) === "superadmin") {
+    return false;
+  }
   const start = localStorage.getItem(SESSION_KEY);
   if (!start) return false;
   if (Date.now() - Number(start) <= SESSION_MAX_MS) return false;
@@ -25,6 +30,7 @@ async function forceLogoutOnExpiry(): Promise<boolean> {
     await getSupabaseBrowser().auth.signOut();
   } catch {}
   localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(ROLE_KEY);
   alert("세션이 만료되었습니다. 다시 로그인해주세요.");
   if (typeof window !== "undefined") window.location.href = "/";
   return true;
@@ -54,6 +60,9 @@ export function useMe(): { me: MeResponse | null; loading: boolean } {
         location.href = "/blocked";
         return;
       }
+      // role 캐싱 — forceLogoutOnExpiry 에서 superadmin 우회 검사용
+      if (m?.role) localStorage.setItem(ROLE_KEY, m.role);
+      else         localStorage.removeItem(ROLE_KEY);
       setMe(m);
     } catch {
       setMe(null);
@@ -73,6 +82,7 @@ export function useMe(): { me: MeResponse | null; loading: boolean } {
         void refresh();
       } else if (event === "SIGNED_OUT") {
         localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(ROLE_KEY);
         void refresh();
       }
     });

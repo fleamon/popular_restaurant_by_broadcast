@@ -7,6 +7,7 @@ import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
 import { api, type Appearance, type ExternalInfo, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
+import { absoluteUrl, siteShareUrl } from "@/lib/site";
 
 type VoteState = { likes: number; dislikes: number; myVote: 1 | -1 | null };
 type VoteMap = Record<number, VoteState>;
@@ -392,7 +393,8 @@ function ShareBar({
 }) {
   const [copied, setCopied] = useState(false);
 
-  const url = typeof window !== "undefined" ? window.location.href : "";
+  // 운영 도메인(NEXT_PUBLIC_SITE_URL) 기준 절대 URL — 로컬 dev 에서도 공유 카드는 운영 도메인.
+  const url = siteShareUrl();
 
   function copyLink() {
     void navigator.clipboard.writeText(url);
@@ -404,7 +406,7 @@ function ShareBar({
     // 카카오 JavaScript SDK 직접 호출 — Web Share API 의 브라우저 확장 가로채기 회피.
     const imageUrl = ytId
       ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`
-      : `${window.location.origin}/white_eyes_blue.png`;
+      : absoluteUrl("/white_eyes_blue.png");
     const description = [
       restaurant.current_address,
       featured?.channels?.name,
