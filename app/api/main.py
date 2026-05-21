@@ -24,8 +24,9 @@ app.add_middleware(
         # 자체 도메인 — 운영 시 활성화
         "https://www.white_eyes_matmap.com",
         "https://white_eyes_matmap.com",
-        "https://www.xn--hq1bm9i1sp.com",
-        "https://xn--hq1bm9i1sp.com",
+        # 맛맵.com (Punycode: xn--0z2byb)
+        "https://www.xn--0z2byb.com",
+        "https://xn--0z2byb.com",
     ],
     # Vercel Preview deploy 도 허용 — regex 매칭. (`allow_origins` 의 "*.vercel.app" 는 글자그대로 비교돼 안 됨)
     allow_origin_regex=r"https://.*\.vercel\.app",
