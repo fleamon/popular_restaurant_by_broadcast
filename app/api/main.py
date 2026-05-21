@@ -4,10 +4,12 @@
 """
 from __future__ import annotations
 
-from fastapi import FastAPI
+import re
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .routers import admin, auth, channels, requests as requests_router, restaurants, users, visits, votes
 
@@ -62,3 +64,41 @@ def redoc() -> HTMLResponse:
 @app.get("/healthz")
 def healthz() -> dict:
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Global exception handler — 500 응답에도 CORS 헤더가 붙도록.
+# FastAPI 의 CORSMiddleware 는 정상 응답만 wrap 하므로, unhandled exception 시
+# 브라우저가 "No 'Access-Control-Allow-Origin' header" 로 오해함.
+# 여기서 허용 origin 인지 검사 후 헤더 echo.
+# ─────────────────────────────────────────────────────────────────────
+_ALLOWED_ORIGINS = {
+    "http://localhost:3000",
+    "https://popular-restaurant-by-broadcast.vercel.app",
+    "https://www.white_eyes_matmap.com",
+    "https://white_eyes_matmap.com",
+    "https://www.xn--0z2byb.com",
+    "https://xn--0z2byb.com",
+}
+_VERCEL_PREVIEW_RE = re.compile(r"^https://.*\.vercel\.app$")
+
+
+def _cors_headers_for(origin: str | None) -> dict[str, str]:
+    if not origin:
+        return {}
+    if origin in _ALLOWED_ORIGINS or _VERCEL_PREVIEW_RE.match(origin):
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Vary": "Origin",
+        }
+    return {}
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"internal server error: {type(exc).__name__}"},
+        headers=_cors_headers_for(request.headers.get("origin")),
+    )

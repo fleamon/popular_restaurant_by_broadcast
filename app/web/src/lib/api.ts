@@ -167,8 +167,13 @@ export const api = {
     const qs = new URLSearchParams({ target_type, target_id: String(target_id) });
     return request<{ ok: boolean }>(`/votes?${qs}`, { method: "DELETE" }, true);
   },
-  myVotes: (target_type: VoteBody["target_type"]) =>
-    request<Record<string, 1 | -1>>(`/votes/mine?target_type=${target_type}`, undefined, true),
+  myVotes: async (target_type: VoteBody["target_type"]) => {
+    // 미로그인 상태에선 호출 자체 skip — 401 폭증·콘솔 노이즈·불필요 RTT 제거.
+    const sb = getSupabaseBrowser();
+    const { data } = await sb.auth.getSession();
+    if (!data.session?.access_token) return {} as Record<string, 1 | -1>;
+    return request<Record<string, 1 | -1>>(`/votes/mine?target_type=${target_type}`, undefined, true);
+  },
   voteScore: (
     target_type: VoteBody["target_type"],
     target_id: number,

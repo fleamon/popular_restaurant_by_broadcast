@@ -284,22 +284,31 @@ def list_regions() -> list[dict]:
 
 
 @router.get("/top")
-def top_restaurants() -> list[dict]:
-    """식당 좋아요 랭킹 — 전체. PostgREST 1000행 한도는 fetch_all 로 페이지 누적, IN 청크."""
+def top_restaurants(
+    offset: int = Query(default=0, ge=0, description="페이지 시작 위치"),
+    limit: int = Query(default=0, ge=0, le=5000, description="0 = 전체(fetch_all), >0 이면 그만큼만"),
+) -> list[dict]:
+    """식당 좋아요 랭킹.
+    기본 (offset=0, limit=0): 전체 페이지 누적 — 클라가 메모리 정렬·페이지네이션.
+    페이지 모드 (limit>0): DB 측 정렬·offset·limit.
+    """
     sb = get_anon_client()
-    # likes desc → dislikes asc (싫어요 많을수록 뒤로) → restaurant_id desc 안정 키.
-    scores = fetch_all(
+    builder = (
         sb.table("v_restaurant_score").select("*")
           .order("likes", desc=True)
           .order("dislikes", desc=False)
           .order("restaurant_id", desc=True)
     )
+    if limit > 0:
+        scores = exec_with_retry(builder.range(offset, offset + limit - 1)).data or []
+    else:
+        scores = fetch_all(builder)
     if not scores:
         return []
     ids = [s["restaurant_id"] for s in scores]
-    # IN 절 URL 길이 한계 회피용 청크
-    details: list[dict] = []
+    # IN 절 URL 길이 한계 — 청크.
     CHUNK = 500
+    details: list[dict] = []
     for i in range(0, len(ids), CHUNK):
         details.extend(exec_with_retry(sb.table("restaurants").select("*").in_("id", ids[i:i + CHUNK])).data or [])
     by_id = {d["id"]: d for d in details}

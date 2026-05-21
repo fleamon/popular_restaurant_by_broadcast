@@ -23,43 +23,64 @@ def list_channels(channel_type: str | None = Query(default=None)) -> list[dict]:
 
 
 @router.get("/ranking")
-def channel_ranking() -> list[dict]:
-    """채널 좋아요 랭킹 — 전체. PostgREST 1000행 한도는 fetch_all 로 페이지 누적."""
+def channel_ranking(
+    offset: int = Query(default=0, ge=0, description="페이지 시작 위치"),
+    limit: int = Query(default=0, ge=0, le=5000, description="0 = 전체(fetch_all), >0 이면 그만큼만"),
+) -> list[dict]:
+    """채널 좋아요 랭킹.
+    기본 (offset=0, limit=0): 전체 — 데이터 누락 없음.
+    페이지 모드 (limit>0): DB 측 정렬·offset·limit.
+    """
     sb = get_anon_client()
-    # likes desc → dislikes asc (싫어요 많을수록 뒤로) → channel_id desc 안정 키.
-    rows = fetch_all(
+    builder = (
         sb.table("v_channel_score").select("*")
           .order("likes", desc=True)
           .order("dislikes", desc=False)
           .order("channel_id", desc=True)
     )
+    if limit > 0:
+        rows = exec_with_retry(builder.range(offset, offset + limit - 1)).data or []
+    else:
+        rows = fetch_all(builder)
     return [{**r, "id": r["channel_id"]} for r in rows]
 
 
 @router.get("/appearances/ranking")
-def appearance_ranking() -> list[dict]:
-    """영상 좋아요 랭킹 — 전체. 채널명·식당명 enrich. IN 절 URL 한계는 청크 처리."""
+def appearance_ranking(
+    offset: int = Query(default=0, ge=0, description="페이지 시작 위치 — 페이지 단위 fetch 시"),
+    limit: int = Query(default=0, ge=0, le=5000, description="0 = 전체(fetch_all), >0 이면 그만큼만"),
+) -> list[dict]:
+    """영상 좋아요 랭킹 + 채널/식당 enrich.
+    기본 (offset=0, limit=0): 전체 페이지 누적 — 클라가 메모리 정렬·검색·페이지네이션.
+    페이지 모드 (limit>0): DB 측 정렬·offset·limit — 운영 데이터 폭증 시 클라가 페이지 단위 호출.
+    enrich 의 IN 절 URL 길이 한계 회피를 위해 500 청크 유지.
+    """
     sb = get_anon_client()
-    # likes desc → dislikes asc (싫어요 많을수록 뒤로) → appearance_id desc 안정 키.
-    rows = fetch_all(
+    builder = (
         sb.table("v_appearance_score").select("*")
           .order("likes", desc=True)
           .order("dislikes", desc=False)
           .order("appearance_id", desc=True)
     )
+    if limit > 0:
+        # PostgREST 의 range 는 inclusive — [offset, offset+limit-1]
+        rows = exec_with_retry(builder.range(offset, offset + limit - 1)).data or []
+    else:
+        rows = fetch_all(builder)
     if not rows:
         return []
+
     ch_ids = list({r["channel_id"] for r in rows if r.get("channel_id") is not None})
     rest_ids = list({r["restaurant_id"] for r in rows if r.get("restaurant_id") is not None})
 
-    def _fetch_in_chunks(table: str, cols: str, ids: list[int], chunk: int = 500) -> list[dict]:
+    def _in_chunks(table: str, cols: str, ids: list[int], chunk: int = 500) -> list[dict]:
         out: list[dict] = []
         for i in range(0, len(ids), chunk):
             out.extend(exec_with_retry(sb.table(table).select(cols).in_("id", ids[i:i + chunk])).data or [])
         return out
 
-    chs = _fetch_in_chunks("channels", "id, name", ch_ids) if ch_ids else []
-    rests = _fetch_in_chunks("restaurants", "id, current_name", rest_ids) if rest_ids else []
+    chs = _in_chunks("channels", "id, name", ch_ids) if ch_ids else []
+    rests = _in_chunks("restaurants", "id, current_name", rest_ids) if rest_ids else []
     ch_map = {c["id"]: c["name"] for c in chs}
     rest_map = {r["id"]: r["current_name"] for r in rests}
     return [
