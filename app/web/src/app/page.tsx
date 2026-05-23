@@ -161,6 +161,19 @@ export default function HomePage() {
     prevSigunguRef.current = sigungu;
   }, [sigungu]);
 
+  // 시군구 → 시도 자동 채우기.
+  //   시도 비어있는데 시군구가 선택되면, regions 에서 그 시군구를 가진 첫 시도를 찾아 자동 셋.
+  //   prevSidoRef 도 같이 업데이트 → 위 cascading reset 이 발동되어 sigungu 가 다시 비워지는 무한 루프 차단.
+  //   같은 시군구 이름이 여러 시도에 있으면(예: '동구', '중구') 첫 매칭 사용 — 사용자가 의도적으로 다른 시도 원하면 직접 선택.
+  useEffect(() => {
+    if (!sigungu || sido) return;
+    const match = regions.find((r) => r.sigungu === sigungu && r.sido);
+    if (match?.sido) {
+      prevSidoRef.current = match.sido; // cascading reset 우회
+      setSidoInput(match.sido);
+    }
+  }, [sigungu, sido, regions]);
+
   // 어떤 필터든 하나라도 설정되어야 결과 조회
   const hasAnyFilter = !!(channelType || channelName || sido || sigungu || dong || cuisine || q);
 
@@ -288,120 +301,153 @@ export default function HomePage() {
 
   return (
     <div>
-      {/* 헤더 라인 */}
-      <div className="mb-2 flex flex-wrap items-center gap-4">
-        <div className="flex items-baseline gap-4">
-          <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">맛집 검색</h1>
-          <span className="font-soft text-base font-bold tracking-tight" style={{ color: COUNT_COLOR }}>
-            결과 {totalCount ?? rows.length} 개
+      {/* 헤더 라인 — 모바일은 컴팩트(h1 작게 / 공지 칩 짧게 / 카톡 아이콘만) */}
+      <div className="mb-2 flex flex-wrap items-center gap-2 sm:gap-4">
+        <div className="flex items-baseline gap-2 sm:gap-4">
+          <h1 className="font-soft text-lg font-bold tracking-tight text-brand sm:text-3xl">맛집 검색</h1>
+          <span className="font-soft text-xs font-bold tracking-tight sm:text-base" style={{ color: COUNT_COLOR }}>
+            결과 {totalCount ?? rows.length}개
           </span>
         </div>
-        {/* 공지 칩 — 투표 참여 유도. 가운데 자리에 시각적으로 두드러지게. */}
         <Link
           href="/vote"
-          className="inline-flex items-center gap-1.5 rounded-full bg-brand-surface px-3 py-1.5 text-xs font-bold text-brand transition-colors hover:bg-brand hover:text-brand-fg"
+          className="inline-flex items-center gap-1 rounded-full bg-brand-surface px-2 py-1 text-[11px] font-bold text-brand transition-colors hover:bg-brand hover:text-brand-fg sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
           title="투표 탭으로 이동"
         >
           <span aria-hidden>🗳</span>
-          <span>좋아하는 맛집·채널·영상에 매일 한 표! 함께 만드는 랭킹에 참여해주세요</span>
+          {/* 모바일 짧은 문구 / 데스크탑 풀 문구 */}
+          <span className="sm:hidden">매일 한 표! 랭킹 참여</span>
+          <span className="hidden sm:inline">좋아하는 맛집·채널·영상에 매일 한 표! 함께 만드는 랭킹에 참여해주세요</span>
         </Link>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
             onClick={shareCurrent}
             title="현재 필터 결과를 카카오톡으로 공유"
-            className="rounded-md bg-[#FEE500] px-3 py-2 text-sm font-bold text-black hover:opacity-90"
+            className="rounded-md bg-[#FEE500] px-2 py-1.5 text-xs font-bold text-black hover:opacity-90 sm:px-3 sm:py-2 sm:text-sm"
           >
-            💬 카카오 공유
+            <span aria-hidden>💬</span>
+            <span className="ml-1 hidden sm:inline">카카오 공유</span>
           </button>
           <ViewToggle value={view} onChange={setView} />
         </div>
       </div>
 
-      {/* 필터 라인 — 채널타입/채널명/시도/시군구/동/카테고리/이름검색 + 검색버튼. 한 줄 유지 + 좁으면 가로 스크롤 */}
-      <div className="mb-4 flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
-        <select value={channelType} onChange={(e) => setChannelType(e.target.value)} className={SELECT_CLS}>
+      {/* 필터:
+            - 모바일(< sm): 3열 grid 3행 — [채널타입/채널명/시도] [시군구/동읍면/카테고리] [식당이름(2칸)/검색버튼(1칸)]
+              모바일 셀은 약간 작은 폰트·패딩으로 컴팩트하게.
+            - 데스크탑(≥ sm): 기존 한 줄 flex + 가로 스크롤.
+            datalist input 의 입력은 Input state, 백엔드 fetch 는 committed 값 → 옵션 '선택' 시에만 핀 갱신. */}
+      <div className="mb-4 grid grid-cols-3 gap-1.5 [&_input]:text-sm [&_input]:py-1.5 [&_input]:px-2 [&_select]:text-sm [&_select]:py-1.5 [&_select]:px-2 sm:flex sm:flex-nowrap sm:items-center sm:gap-2 sm:overflow-x-auto sm:pb-1 sm:[&_input]:text-sm sm:[&_input]:py-2 sm:[&_input]:px-3 sm:[&_select]:text-sm sm:[&_select]:py-2 sm:[&_select]:px-2">
+        <select value={channelType} onChange={(e) => setChannelType(e.target.value)} className={`${SELECT_CLS} w-full sm:w-auto`}>
           <option value="">채널 타입</option>
           {CHANNEL_TYPES.map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
 
-        {/* 채널명 / 시도 / 시군구 / 동읍면 — datalist 자동완성.
-            입력은 Input state, 백엔드 fetch 는 committed 값 → 옵션을 '선택' 했을 때만 핀이 바뀜.
-            cascading 하위 초기화는 committed 변경 시 ref-based 로 처리. */}
         <input
           list="dl-channel"
           value={channelNameInput}
           onChange={(e) => setChannelNameInput(e.target.value)}
           placeholder="채널명"
-          className={`${INPUT_CLS} min-w-[160px]`}
+          className={`${INPUT_CLS} w-full sm:w-auto sm:min-w-[160px]`}
         />
         <datalist id="dl-channel">
           {filteredChannels.map((c) => <option key={c.id} value={c.name} />)}
         </datalist>
 
+        {/* 시도 — 모바일: native select(하단 sheet) / 데스크탑: datalist input(like 검색) */}
+        <select
+          value={sidoInput}
+          onChange={(e) => setSidoInput(e.target.value)}
+          className={`${SELECT_CLS} w-full sm:hidden`}
+        >
+          <option value="">시도</option>
+          {sidoOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
         <input
           list="dl-sido"
           value={sidoInput}
           onChange={(e) => setSidoInput(e.target.value)}
           placeholder="시도"
-          className={`${INPUT_CLS} min-w-[120px]`}
+          className={`${INPUT_CLS} hidden sm:block sm:w-auto sm:min-w-[120px]`}
         />
         <datalist id="dl-sido">
           {sidoOptions.map((s) => <option key={s} value={s} />)}
         </datalist>
 
+        {/* 시군구 */}
+        <select
+          value={sigunguInput}
+          onChange={(e) => setSigunguInput(e.target.value)}
+          className={`${SELECT_CLS} w-full sm:hidden`}
+        >
+          <option value="">시/군/구</option>
+          {sigunguOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
         <input
           list="dl-sigungu"
           value={sigunguInput}
           onChange={(e) => setSigunguInput(e.target.value)}
           placeholder="시/군/구"
-          className={`${INPUT_CLS} min-w-[120px]`}
+          className={`${INPUT_CLS} hidden sm:block sm:w-auto sm:min-w-[120px]`}
         />
         <datalist id="dl-sigungu">
           {sigunguOptions.map((s) => <option key={s} value={s} />)}
         </datalist>
 
+        {/* 동/읍/면 */}
+        <select
+          value={dongInput}
+          onChange={(e) => setDongInput(e.target.value)}
+          className={`${SELECT_CLS} w-full sm:hidden`}
+        >
+          <option value="">동/읍/면</option>
+          {dongOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
         <input
           list="dl-dong"
           value={dongInput}
           onChange={(e) => setDongInput(e.target.value)}
           placeholder="동/읍/면"
-          className={`${INPUT_CLS} min-w-[120px]`}
+          className={`${INPUT_CLS} hidden sm:block sm:w-auto sm:min-w-[120px]`}
         />
         <datalist id="dl-dong">
           {dongOptions.map((d) => <option key={d} value={d} />)}
         </datalist>
 
-        <select value={cuisine} onChange={(e) => setCuisine(e.target.value)} className={SELECT_CLS}>
+        <select value={cuisine} onChange={(e) => setCuisine(e.target.value)} className={`${SELECT_CLS} w-full sm:w-auto`}>
           <option value="">카테고리</option>
           {CUISINES.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
 
+        {/* 식당 이름 — 모바일 2칸, 데스크탑 단일 칼럼 */}
         <input
           placeholder="식당 이름"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && triggerSearch()}
-          className={INPUT_CLS}
+          className={`${INPUT_CLS} w-full col-span-2 sm:col-span-1`}
         />
 
+        {/* 검색 버튼 — 모바일 1칸, 데스크탑 inline */}
         <button
           type="button"
           onClick={triggerSearch}
           aria-label="검색"
           title="검색"
-          className="shrink-0 hover:opacity-70 transition-opacity"
+          className="flex items-center justify-center transition-opacity hover:opacity-70 sm:shrink-0"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 200 100"
             role="img"
             aria-label="검색"
-            className="h-11 w-auto"
+            className="h-9 w-full max-w-[180px] sm:h-11 sm:w-auto"
+            preserveAspectRatio="xMidYMid meet"
           >
             <rect width="200" height="100" rx="14" fill="rgb(44 66 163)" />
             <text

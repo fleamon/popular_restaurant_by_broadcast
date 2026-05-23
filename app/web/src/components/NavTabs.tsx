@@ -21,7 +21,8 @@ export default function NavTabs({ isAdmin }: { isAdmin: boolean }) {
   const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS;
 
   return (
-    <nav className="flex items-center gap-1 ml-2">
+    // 모바일: 좁은 폭이라 가로 스크롤 + 작은 폰트 / 데스크탑: 기존 큼지막한 탭
+    <nav className="ml-1 flex flex-1 min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap sm:ml-2 sm:gap-1">
       {tabs.map((t) => {
         const active = isActive(path, t.href);
         return (
@@ -30,7 +31,8 @@ export default function NavTabs({ isAdmin }: { isAdmin: boolean }) {
             href={t.href}
             aria-current={active ? "page" : undefined}
             className={[
-              "px-4 py-2 text-2xl font-bold rounded-md transition-colors",
+              "shrink-0 whitespace-nowrap rounded-md font-bold transition-colors",
+              "px-2 py-1.5 text-base sm:px-4 sm:py-2 sm:text-2xl",
               "text-brand hover:bg-brand-surface",
               active ? "bg-brand-surface" : "",
             ].join(" ")}
