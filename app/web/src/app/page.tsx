@@ -38,8 +38,10 @@ const CUISINES = [
 const SELECT_CLS =
   "shrink-0 rounded-md border border-neutral-200 bg-white px-2 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none";
 
+// min-w-0 — 모바일 grid 셀이 input 의 내재 너비에 의해 강제로 늘어나지 않도록.
+// flex-1 / min-w-[Npx] 같은 데스크탑 전용 너비는 호출하는 쪽에서 sm: prefix 로 명시.
 const INPUT_CLS =
-  "min-w-[140px] flex-1 rounded-md border border-neutral-200 bg-white px-2 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none";
+  "min-w-0 rounded-md border border-neutral-200 bg-white px-2 py-2 text-sm font-bold text-black focus:border-brand focus:outline-none";
 
 export default function HomePage() {
   const router = useRouter();
@@ -424,13 +426,13 @@ export default function HomePage() {
           ))}
         </select>
 
-        {/* 식당 이름 — 모바일 2칸, 데스크탑 단일 칼럼 */}
+        {/* 식당 이름 — 모바일 2칸, 데스크탑은 남은 폭 flex-1 */}
         <input
           placeholder="식당 이름"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && triggerSearch()}
-          className={`${INPUT_CLS} w-full col-span-2 sm:col-span-1`}
+          className={`${INPUT_CLS} w-full col-span-2 sm:col-span-1 sm:flex-1 sm:min-w-[140px]`}
         />
 
         {/* 검색 버튼 — 모바일 1칸, 데스크탑 inline */}

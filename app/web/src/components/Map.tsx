@@ -294,7 +294,9 @@ function PinModal({
 }) {
   const rState = voteR[restaurant.id] ?? { likes: restaurant.likes ?? 0, dislikes: restaurant.dislikes ?? 0, myVote: null };
 
-  // 모달 외부 클릭/터치 시 닫기 — 지도 안뿐 아니라 헤더·페이지 어디든 OK.
+  // 모달 외부 클릭/터치 시 닫기 — 지도 / 헤더 / 페이지 어디든 OK.
+  // capture phase 에서 가로채 preventDefault + stopPropagation → 외부에 있는 input/select 의
+  // 키보드/dropdown 같은 native action 도 같이 차단 (모달만 닫히고 그 외 동작 X).
   // mount 직후의 핀 클릭 이벤트가 document 까지 올라오는 race 를 setTimeout(0) 으로 회피.
   const modalRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -303,16 +305,21 @@ function PinModal({
       if (!node) return;
       const target = e.target as Node | null;
       if (target && node.contains(target)) return;
+      // 외부 — 그 자리의 native action 막고 모달만 닫기
+      e.preventDefault();
+      e.stopPropagation();
       onClose();
     }
     const t = window.setTimeout(() => {
-      document.addEventListener("mousedown", onOutside);
-      document.addEventListener("touchstart", onOutside, { passive: true });
+      document.addEventListener("mousedown", onOutside, { capture: true });
+      document.addEventListener("touchstart", onOutside, { capture: true, passive: false });
+      document.addEventListener("click",      onOutside, { capture: true });
     }, 0);
     return () => {
       window.clearTimeout(t);
-      document.removeEventListener("mousedown", onOutside);
-      document.removeEventListener("touchstart", onOutside);
+      document.removeEventListener("mousedown", onOutside, { capture: true } as EventListenerOptions);
+      document.removeEventListener("touchstart", onOutside, { capture: true } as EventListenerOptions);
+      document.removeEventListener("click",      onOutside, { capture: true } as EventListenerOptions);
     };
   }, [onClose]);
 
