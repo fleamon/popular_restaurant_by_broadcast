@@ -76,7 +76,8 @@ export function useMe(): { me: MeResponse | null; loading: boolean } {
     const sb = getSupabaseBrowser();
 
     // SIGNED_IN / SIGNED_OUT 에만 재검사. TOKEN_REFRESHED 는 동일 사용자 → 권한 재체크 불필요.
-    const { data: sub } = sb.auth.onAuthStateChange((event: string) => {
+    // 단 TOKEN_REFRESHED + session=null 은 refresh 실패 (Invalid Refresh Token) → stale 토큰 정리.
+    const { data: sub } = sb.auth.onAuthStateChange(async (event: string, session: unknown) => {
       if (event === "SIGNED_IN") {
         localStorage.setItem(SESSION_KEY, String(Date.now()));
         void refresh();
@@ -84,6 +85,11 @@ export function useMe(): { me: MeResponse | null; loading: boolean } {
         localStorage.removeItem(SESSION_KEY);
         localStorage.removeItem(ROLE_KEY);
         void refresh();
+      } else if ((event === "TOKEN_REFRESHED" || event === "USER_UPDATED") && !session) {
+        // 잔재 refresh 토큰이 무효 — localStorage 정리 후 silent 처리
+        try { await sb.auth.signOut(); } catch {}
+        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(ROLE_KEY);
       }
     });
 

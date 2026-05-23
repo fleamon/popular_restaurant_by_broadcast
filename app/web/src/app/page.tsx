@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -295,6 +296,15 @@ export default function HomePage() {
             결과 {totalCount ?? rows.length} 개
           </span>
         </div>
+        {/* 공지 칩 — 투표 참여 유도. 가운데 자리에 시각적으로 두드러지게. */}
+        <Link
+          href="/vote"
+          className="inline-flex items-center gap-1.5 rounded-full bg-brand-surface px-3 py-1.5 text-xs font-bold text-brand transition-colors hover:bg-brand hover:text-brand-fg"
+          title="투표 탭으로 이동"
+        >
+          <span aria-hidden>🗳</span>
+          <span>좋아하는 맛집·채널·영상에 매일 한 표! 함께 만드는 랭킹에 참여해주세요</span>
+        </Link>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
