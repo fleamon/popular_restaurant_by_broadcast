@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CustomOverlayMap,
   Map as KakaoMap,
@@ -293,18 +293,52 @@ function PinModal({
   setVoteA: VoteMapSetter;
 }) {
   const rState = voteR[restaurant.id] ?? { likes: restaurant.likes ?? 0, dislikes: restaurant.dislikes ?? 0, myVote: null };
+
+  // 모달 외부 클릭/터치 시 닫기 — 지도 안뿐 아니라 헤더·페이지 어디든 OK.
+  // mount 직후의 핀 클릭 이벤트가 document 까지 올라오는 race 를 setTimeout(0) 으로 회피.
+  const modalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onOutside(e: MouseEvent | TouchEvent) {
+      const node = modalRef.current;
+      if (!node) return;
+      const target = e.target as Node | null;
+      if (target && node.contains(target)) return;
+      onClose();
+    }
+    const t = window.setTimeout(() => {
+      document.addEventListener("mousedown", onOutside);
+      document.addEventListener("touchstart", onOutside, { passive: true });
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("mousedown", onOutside);
+      document.removeEventListener("touchstart", onOutside);
+    };
+  }, [onClose]);
+
   return (
-    <div className="absolute right-4 top-4 z-10 w-[380px] rounded-2xl bg-white shadow-2xl ring-1 ring-neutral-200">
+    // 모바일: 좌우 8px 마진 + 화면 폭 가득(좌상단 고정), 세로 80vh 한도 + 내부 스크롤.
+    // 데스크탑: 기존 우상단 380px 카드.
+    <div
+      ref={modalRef}
+      className={[
+        "absolute z-10 overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-neutral-200",
+        // 모바일 — left/top 2 + 폭/높이 화면 기준
+        "left-2 right-2 top-2 max-h-[80vh]",
+        // 데스크탑 — 기존 우상단 380px 고정
+        "sm:left-auto sm:right-4 sm:top-4 sm:w-[380px] sm:max-h-[calc(100vh-2rem)]",
+      ].join(" ")}
+    >
       <button
         onClick={onClose}
         aria-label="닫기"
-        className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-full bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+        className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-neutral-100 text-neutral-500 hover:bg-neutral-200 sm:right-3 sm:top-3"
       >
         ×
       </button>
-      <div className="p-4 pr-10">
-        <div className="text-base font-bold text-brand">{restaurant.current_name}</div>
-        <div className="mt-1 text-xs text-neutral-500">{restaurant.current_address}</div>
+      <div className="p-3 pr-9 sm:p-4 sm:pr-10">
+        <div className="pr-2 text-sm font-bold text-brand sm:text-base">{restaurant.current_name}</div>
+        <div className="mt-0.5 text-[11px] text-neutral-500 sm:mt-1 sm:text-xs">{restaurant.current_address}</div>
         {/* 식당 투표 — 라벨로 어떤 대상인지 명시 */}
         <div className="mt-2 flex items-center gap-2">
           <VoteLabel kind="restaurant" />
@@ -318,12 +352,12 @@ function PinModal({
             size="sm"
           />
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-2 flex gap-2 sm:mt-3">
           <a
             href={restaurant.naver_map_url ?? `https://map.naver.com/v5/search/${encodeURIComponent(restaurant.current_name)}`}
             target="_blank"
             rel="noreferrer"
-            className="flex-1 rounded-md bg-[#03C75A] px-3 py-1.5 text-center text-xs font-bold text-white hover:opacity-90"
+            className="flex-1 rounded-md bg-[#03C75A] px-2 py-1.5 text-center text-[11px] font-bold text-white hover:opacity-90 sm:px-3 sm:text-xs"
           >
             네이버지도
           </a>
@@ -331,7 +365,7 @@ function PinModal({
             href={restaurant.kakao_map_url ?? `https://map.kakao.com/?q=${encodeURIComponent(restaurant.current_name)}`}
             target="_blank"
             rel="noreferrer"
-            className="flex-1 rounded-md bg-[#FEE500] px-3 py-1.5 text-center text-xs font-bold text-black hover:opacity-90"
+            className="flex-1 rounded-md bg-[#FEE500] px-2 py-1.5 text-center text-[11px] font-bold text-black hover:opacity-90 sm:px-3 sm:text-xs"
           >
             다음지도
             {restaurant.kakao_rating ? <span className="ml-1">⭐ {restaurant.kakao_rating.toFixed(1)}</span> : null}
@@ -341,9 +375,9 @@ function PinModal({
 
       <div className="border-t border-neutral-100">
         {loading ? (
-          <p className="p-4 text-xs text-neutral-400">대표 영상 불러오는 중…</p>
+          <p className="p-3 text-[11px] text-neutral-400 sm:p-4 sm:text-xs">대표 영상 불러오는 중…</p>
         ) : appearances.length === 0 ? (
-          <p className="p-4 text-xs text-neutral-400">아직 등록된 영상이 없습니다.</p>
+          <p className="p-3 text-[11px] text-neutral-400 sm:p-4 sm:text-xs">아직 등록된 영상이 없습니다.</p>
         ) : (
           <ul className="divide-y divide-neutral-100">
             {appearances.map((a) => (
@@ -360,10 +394,10 @@ function PinModal({
         )}
       </div>
 
-      <div className="border-t border-neutral-100 p-3 text-center">
+      <div className="border-t border-neutral-100 p-2 text-center sm:p-3">
         <Link
           href={`/restaurants/${restaurant.id}`}
-          className="inline-block w-full rounded-md bg-brand px-3 py-2 text-sm font-bold text-brand-fg hover:bg-brand-hover"
+          className="inline-block w-full rounded-md bg-brand px-3 py-1.5 text-xs font-bold text-brand-fg hover:bg-brand-hover sm:py-2 sm:text-sm"
         >
           자세히 보기 →
         </Link>
@@ -389,32 +423,33 @@ function VideoRow({
   const url = app.source_url ?? (ytId ? `https://www.youtube.com/watch?v=${ytId}` : null);
   // 자세히보기 페이지의 YouTube 임베드와 동일한 영상의 썸네일을 사용.
   const thumb = app.thumbnail_url ?? ytThumbUrl(ytId, "mqdefault");
+  // 모바일 컴팩트: 썸네일 h-12 w-16, 패딩 p-2 — 데스크탑은 기존
   return (
-    <li className="p-3">
-      <div className="flex gap-3">
+    <li className="p-2 sm:p-3">
+      <div className="flex gap-2 sm:gap-3">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" className="shrink-0">
             {thumb ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={thumb} alt="" className="h-14 w-20 rounded object-cover" />
+              <img src={thumb} alt="" className="h-12 w-16 rounded object-cover sm:h-14 sm:w-20" />
             ) : (
-              <div className="h-14 w-20 rounded bg-neutral-100" />
+              <div className="h-12 w-16 rounded bg-neutral-100 sm:h-14 sm:w-20" />
             )}
           </a>
         ) : (
           thumb ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumb} alt="" className="h-14 w-20 shrink-0 rounded object-cover" />
+            <img src={thumb} alt="" className="h-12 w-16 shrink-0 rounded object-cover sm:h-14 sm:w-20" />
           ) : (
-            <div className="h-14 w-20 shrink-0 rounded bg-neutral-100" />
+            <div className="h-12 w-16 shrink-0 rounded bg-neutral-100 sm:h-14 sm:w-20" />
           )
         )}
-        <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex-1 min-w-0 space-y-1 sm:space-y-1.5">
           {/* 채널 라인 — 라벨 + 채널명 + 채널 투표 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1.5">
               <VoteLabel kind="channel" />
-              <span className="truncate text-xs font-bold text-neutral-700">{app.channels?.name ?? "—"}</span>
+              <span className="truncate text-[11px] font-bold text-neutral-700 sm:text-xs">{app.channels?.name ?? "—"}</span>
             </div>
             <VoteButton
               target_type="channel"
@@ -430,7 +465,7 @@ function VideoRow({
           <div>
             <div className="flex min-w-0 items-start gap-1.5">
               <VoteLabel kind="appearance" className="mt-0.5" />
-              <div className="line-clamp-2 text-sm font-bold text-neutral-900">
+              <div className="line-clamp-2 text-xs font-bold text-neutral-900 sm:text-sm">
                 {url ? (
                   <a href={url} target="_blank" rel="noreferrer" className="hover:text-brand">{app.episode_title ?? "에피소드"}</a>
                 ) : (app.episode_title ?? "에피소드")}
