@@ -82,9 +82,9 @@ export default function VoteButton({
   const likeActive = myVote === 1;
   const dislikeActive = myVote === -1;
 
-  const pad = size === "sm" ? "px-2.5 py-1" : "px-3 py-1.5";
-  const iconSize = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
-  const txt = size === "sm" ? "text-xs" : "text-sm";
+  const pad = size === "sm" ? "px-1.5 py-0.5" : "px-3 py-1.5";
+  const iconSize = size === "sm" ? "h-3 w-3" : "h-4 w-4";
+  const txt = size === "sm" ? "text-[11px]" : "text-sm";
 
   return (
     <div

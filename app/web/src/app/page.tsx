@@ -75,8 +75,17 @@ export default function HomePage() {
   const [bounds, setBounds] = useState<Bounds | null>(null);
   // 식당 내 투표 상태 — 페이지 마운트 시 fetch. List/Grid 카드에 prop 으로 전달.
   const [myR, setMyR] = useState<Record<string, 1 | -1>>({});
+  // 식당 북마크 상태 — undefined: 미로그인(버튼 숨김), Record: 로그인됨
+  const [myBR, setMyBR] = useState<Record<string, true> | undefined>(undefined);
   useEffect(() => {
     api.myVotes("restaurant").then(setMyR).catch(() => setMyR({}));
+    api.bookmarkIds().then((ids) => {
+      const filtered: Record<string, true> = {};
+      for (const key of Object.keys(ids)) {
+        if (key.startsWith("restaurant:")) filtered[key.slice("restaurant:".length)] = true;
+      }
+      setMyBR(filtered);
+    }).catch(() => setMyBR(undefined));
   }, []);
 
   // list/grid 뷰일 때만 페이지네이션 크기 적용. map 뷰는 0 (cap/viewport 모드).
@@ -495,21 +504,45 @@ export default function HomePage() {
       ) : (
         <>
           {view === "list"
-            ? <RestaurantList rows={rows} myVotes={myR} onMyVoteChange={(id, mv) =>
-                setMyR((prev) => {
-                  const next = { ...prev };
-                  if (mv === null) delete next[String(id)];
-                  else next[String(id)] = mv;
-                  return next;
-                })}
+            ? <RestaurantList
+                rows={rows}
+                myVotes={myR}
+                onMyVoteChange={(id, mv) =>
+                  setMyR((prev) => {
+                    const next = { ...prev };
+                    if (mv === null) delete next[String(id)];
+                    else next[String(id)] = mv;
+                    return next;
+                  })}
+                myBookmarks={myBR}
+                onBookmarkChange={(id, bm) =>
+                  setMyBR((prev) => {
+                    if (!prev) return prev;
+                    const next = { ...prev };
+                    if (bm) next[String(id)] = true;
+                    else delete next[String(id)];
+                    return next;
+                  })}
               />
-            : <RestaurantGrid rows={rows} myVotes={myR} onMyVoteChange={(id, mv) =>
-                setMyR((prev) => {
-                  const next = { ...prev };
-                  if (mv === null) delete next[String(id)];
-                  else next[String(id)] = mv;
-                  return next;
-                })}
+            : <RestaurantGrid
+                rows={rows}
+                myVotes={myR}
+                onMyVoteChange={(id, mv) =>
+                  setMyR((prev) => {
+                    const next = { ...prev };
+                    if (mv === null) delete next[String(id)];
+                    else next[String(id)] = mv;
+                    return next;
+                  })}
+                myBookmarks={myBR}
+                onBookmarkChange={(id, bm) =>
+                  setMyBR((prev) => {
+                    if (!prev) return prev;
+                    const next = { ...prev };
+                    if (bm) next[String(id)] = true;
+                    else delete next[String(id)];
+                    return next;
+                  })}
               />
           }
           <Pagination

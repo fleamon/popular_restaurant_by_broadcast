@@ -42,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         )}
         <Header />
         {/* Suspense — useSearchParams 등 client hook 이 정적 prerender 시 Suspense boundary 를 요구 (Next 16). */}
-        <main className="mx-auto max-w-6xl px-4 py-3">
+        <main className="mx-auto max-w-6xl overflow-x-hidden px-4 py-3">
           <Suspense fallback={null}>{children}</Suspense>
         </main>
         {/* 좌측 하단 fixed 방문자 카운터 — 모든 페이지에 노출 */}

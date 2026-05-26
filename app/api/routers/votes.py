@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -92,6 +93,206 @@ def my_votes(target_type: VoteTarget = Query(...), user: dict = Depends(require_
           .eq("vote_date", _today_kst_iso())
     ).data or []
     return {str(r["target_id"]): r["value"] for r in rows}
+
+
+@router.get("/my-history")
+def my_vote_history(user: dict = Depends(require_user)) -> dict:
+    """내가 투표한 항목별 좋아요/싫어요 누적 집계."""
+    sb = get_service_client()
+    uid = user["sequence"]
+    rows = exec_with_retry(
+        sb.table("votes").select("target_type, target_id, value")
+          .eq("user_id", uid)
+    ).data or []
+
+    summary: dict = defaultdict(lambda: {"likes": 0, "dislikes": 0})
+    for r in rows:
+        key = (r["target_type"], r["target_id"])
+        if r["value"] == 1:
+            summary[key]["likes"] += 1
+        else:
+            summary[key]["dislikes"] += 1
+
+    restaurant_ids = [tid for (tt, tid) in summary if tt == "restaurant"]
+    channel_ids = [tid for (tt, tid) in summary if tt == "channel"]
+    appearance_ids = [tid for (tt, tid) in summary if tt == "appearance"]
+
+    restaurants: list[dict] = []
+    if restaurant_ids:
+        rr = exec_with_retry(
+            sb.table("restaurants").select("id, current_name, current_address")
+              .in_("id", restaurant_ids)
+        ).data or []
+        rs_scores = {
+            r["restaurant_id"]: r
+            for r in (exec_with_retry(
+                sb.table("v_restaurant_score").select("restaurant_id, likes, dislikes")
+                  .in_("restaurant_id", restaurant_ids)
+            ).data or [])
+        }
+        for r in rr:
+            sc = rs_scores.get(r["id"], {})
+            s = summary[("restaurant", r["id"])]
+            restaurants.append({
+                "id": r["id"],
+                "name": r["current_name"],
+                "address": r["current_address"],
+                "likes": int(sc.get("likes") or 0),
+                "dislikes": int(sc.get("dislikes") or 0),
+                "my_likes": s["likes"],
+                "my_dislikes": s["dislikes"],
+            })
+
+    channels: list[dict] = []
+    if channel_ids:
+        cr = exec_with_retry(
+            sb.table("channels").select("id, name")
+              .in_("id", channel_ids)
+        ).data or []
+        ch_scores = {
+            c["channel_id"]: c
+            for c in (exec_with_retry(
+                sb.table("v_channel_score").select("channel_id, likes, dislikes")
+                  .in_("channel_id", channel_ids)
+            ).data or [])
+        }
+        for c in cr:
+            sc = ch_scores.get(c["id"], {})
+            s = summary[("channel", c["id"])]
+            channels.append({
+                "id": c["id"],
+                "name": c["name"],
+                "likes": int(sc.get("likes") or 0),
+                "dislikes": int(sc.get("dislikes") or 0),
+                "my_likes": s["likes"],
+                "my_dislikes": s["dislikes"],
+            })
+
+    appearances: list[dict] = []
+    if appearance_ids:
+        ar = exec_with_retry(
+            sb.table("appearances")
+              .select("id, episode_title, restaurant_id, channel_id, restaurants(current_name), channels(name)")
+              .in_("id", appearance_ids)
+        ).data or []
+        ap_scores = {
+            a["appearance_id"]: a
+            for a in (exec_with_retry(
+                sb.table("v_appearance_score").select("appearance_id, likes, dislikes")
+                  .in_("appearance_id", appearance_ids)
+            ).data or [])
+        }
+        for a in ar:
+            sc = ap_scores.get(a["id"], {})
+            s = summary[("appearance", a["id"])]
+            appearances.append({
+                "id": a["id"],
+                "episode_title": a.get("episode_title"),
+                "restaurant_id": a.get("restaurant_id"),
+                "channel_id": a.get("channel_id"),
+                "restaurant_name": (a.get("restaurants") or {}).get("current_name"),
+                "channel_name": (a.get("channels") or {}).get("name"),
+                "likes": int(sc.get("likes") or 0),
+                "dislikes": int(sc.get("dislikes") or 0),
+                "my_likes": s["likes"],
+                "my_dislikes": s["dislikes"],
+            })
+
+    return {"restaurants": restaurants, "channels": channels, "appearances": appearances}
+
+
+@router.get("/ranking")
+def period_ranking(
+    target_type: VoteTarget = Query(...),
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    limit: int = Query(100),
+) -> list:
+    """기간별 투표 랭킹 — from/to 없으면 전체 기간."""
+    sb = get_service_client()
+
+    q = sb.table("votes").select("target_id, value").eq("target_type", target_type)
+    if from_date:
+        q = q.gte("vote_date", from_date.isoformat())
+    if to_date:
+        q = q.lte("vote_date", to_date.isoformat())
+
+    rows = exec_with_retry(q).data or []
+
+    agg: dict = defaultdict(lambda: {"likes": 0, "dislikes": 0})
+    for r in rows:
+        tid = r["target_id"]
+        if r["value"] == 1:
+            agg[tid]["likes"] += 1
+        else:
+            agg[tid]["dislikes"] += 1
+
+    sorted_ids = sorted(
+        agg.keys(),
+        key=lambda tid: agg[tid]["likes"] - agg[tid]["dislikes"],
+        reverse=True,
+    )[:limit]
+
+    if not sorted_ids:
+        return []
+
+    if target_type == "restaurant":
+        detail = exec_with_retry(
+            sb.table("restaurants").select("id, current_name").in_("id", sorted_ids)
+        ).data or []
+        name_map = {r["id"]: r["current_name"] for r in detail}
+        return [
+            {
+                "id": tid,
+                "name": name_map.get(tid, f"#{tid}"),
+                "likes": agg[tid]["likes"],
+                "dislikes": agg[tid]["dislikes"],
+                "net_score": agg[tid]["likes"] - agg[tid]["dislikes"],
+            }
+            for tid in sorted_ids
+        ]
+    elif target_type == "channel":
+        detail = exec_with_retry(
+            sb.table("channels").select("id, name").in_("id", sorted_ids)
+        ).data or []
+        name_map = {c["id"]: c["name"] for c in detail}
+        return [
+            {
+                "id": tid,
+                "name": name_map.get(tid, f"#{tid}"),
+                "likes": agg[tid]["likes"],
+                "dislikes": agg[tid]["dislikes"],
+                "net_score": agg[tid]["likes"] - agg[tid]["dislikes"],
+            }
+            for tid in sorted_ids
+        ]
+    else:
+        detail = exec_with_retry(
+            sb.table("appearances")
+              .select("id, episode_title, restaurant_id, channel_id, restaurants(current_name), channels(name)")
+              .in_("id", sorted_ids)
+        ).data or []
+        app_map = {a["id"]: a for a in detail}
+        return [
+            {
+                "appearance_id": tid,
+                "id": tid,
+                "restaurant_id": app_map.get(tid, {}).get("restaurant_id"),
+                "restaurant_name": (app_map.get(tid, {}).get("restaurants") or {}).get("current_name"),
+                "channel_id": app_map.get(tid, {}).get("channel_id"),
+                "channel_name": (app_map.get(tid, {}).get("channels") or {}).get("name"),
+                "episode_title": app_map.get(tid, {}).get("episode_title"),
+                "likes": agg[tid]["likes"],
+                "dislikes": agg[tid]["dislikes"],
+                "net_score": agg[tid]["likes"] - agg[tid]["dislikes"],
+                "trend_score": None,
+                "source_url": None,
+                "youtube_video_id": None,
+                "thumbnail_url": None,
+                "aired_at": None,
+            }
+            for tid in sorted_ids
+        ]
 
 
 @router.get("/score")

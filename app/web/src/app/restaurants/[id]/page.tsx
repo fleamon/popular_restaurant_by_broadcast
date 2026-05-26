@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
+import BookmarkButton from "@/components/BookmarkButton";
 import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
 import { api, type Appearance, type ExternalInfo, type Restaurant } from "@/lib/api";
@@ -19,6 +20,10 @@ export default function RestaurantDetailPage() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [apps, setApps] = useState<Appearance[]>([]);
   const [ext, setExt] = useState<ExternalInfo | null>(null);
+  const [isBookmarked, setIsBookmarked] = useState<boolean | undefined>(undefined);
+  // 채널/영상 북마크 — undefined: 비로그인
+  const [bmC, setBmC] = useState<Record<number, boolean> | undefined>(undefined);
+  const [bmA, setBmA] = useState<Record<number, boolean> | undefined>(undefined);
 
   // 투표 상태 — 식당/채널/영상 별로 (target_id → state). 같은 채널이 여러 영상에 등장해도 한 번 클릭 시 모두 동기화.
   const [voteR, setVoteR] = useState<VoteMap>({});
@@ -82,6 +87,17 @@ export default function RestaurantDetailPage() {
     api.myVotes("restaurant").then(mergeMy(setVoteR)).catch(() => {});
     api.myVotes("channel").then(mergeMy(setVoteC)).catch(() => {});
     api.myVotes("appearance").then(mergeMy(setVoteA)).catch(() => {});
+    api.bookmarkIds().then((ids) => {
+      setIsBookmarked(!!ids[`restaurant:${id}`]);
+      const c: Record<number, boolean> = {};
+      const a: Record<number, boolean> = {};
+      for (const key of Object.keys(ids)) {
+        if (key.startsWith("channel:")) c[Number(key.slice("channel:".length))] = true;
+        else if (key.startsWith("appearance:")) a[Number(key.slice("appearance:".length))] = true;
+      }
+      setBmC(c);
+      setBmA(a);
+    }).catch(() => {});
   }, [id]);
 
   if (!restaurant) return <div className="text-sm font-bold text-neutral-500">불러오는 중…</div>;
@@ -95,7 +111,17 @@ export default function RestaurantDetailPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-soft text-3xl font-bold tracking-tight text-brand">{restaurant.current_name}</h1>
+        <div className="flex items-start gap-3">
+          <h1 className="font-soft flex-1 text-3xl font-bold tracking-tight text-brand">{restaurant.current_name}</h1>
+          {isBookmarked !== undefined && (
+            <BookmarkButton
+              target_type="restaurant"
+              target_id={restaurant.id}
+              initialBookmarked={isBookmarked}
+              onChange={(_, bm) => setIsBookmarked(bm)}
+            />
+          )}
+        </div>
         <p className="mt-1 text-sm font-bold text-neutral-500">{restaurant.current_address}</p>
         {restaurant.cuisine && <p className="text-xs text-neutral-400">{restaurant.cuisine}</p>}
         {/* 식당 좋아요/싫어요는 하단 '식당 정보' 카드에서만 노출 — 페이지 상단은 제목만 */}
@@ -146,6 +172,8 @@ export default function RestaurantDetailPage() {
         ext={ext}
         rState={rState}
         onChangeR={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
+        isBookmarked={isBookmarked}
+        onBookmarkChange={(_, bm) => setIsBookmarked(bm)}
       />
 
       {/* 영상 목록 (좋아요순) */}
@@ -163,15 +191,26 @@ export default function RestaurantDetailPage() {
                     <VoteLabel kind="channel" />
                     <span className="truncate text-sm font-bold text-neutral-700">{a.channels?.name ?? "—"}</span>
                   </div>
-                  <VoteButton
-                    target_type="channel"
-                    target_id={a.channel_id}
-                    initialLikes={cState.likes}
-                    initialDislikes={cState.dislikes}
-                    initialMyVote={cState.myVote}
-                    onChange={(next) => setVoteC((prev) => ({ ...prev, [a.channel_id]: next }))}
-                    size="sm"
-                  />
+                  <div className="flex shrink-0 items-center gap-1">
+                    <VoteButton
+                      target_type="channel"
+                      target_id={a.channel_id}
+                      initialLikes={cState.likes}
+                      initialDislikes={cState.dislikes}
+                      initialMyVote={cState.myVote}
+                      onChange={(next) => setVoteC((prev) => ({ ...prev, [a.channel_id]: next }))}
+                      size="sm"
+                    />
+                    {bmC !== undefined && (
+                      <BookmarkButton
+                        target_type="channel"
+                        target_id={a.channel_id}
+                        initialBookmarked={bmC[a.channel_id] ?? false}
+                        onChange={(bid, bm) => setBmC((prev) => { if (!prev) return prev; const n = { ...prev }; if (bm) n[bid] = true; else delete n[bid]; return n; })}
+                        size="sm"
+                      />
+                    )}
+                  </div>
                 </div>
                 {/* 영상 라인 */}
                 <div className="flex items-start justify-between gap-2">
@@ -182,15 +221,26 @@ export default function RestaurantDetailPage() {
                       <div className="mt-0.5 text-xs text-neutral-400">{a.aired_at ?? ""}</div>
                     </div>
                   </div>
-                  <VoteButton
-                    target_type="appearance"
-                    target_id={a.id}
-                    initialLikes={aState.likes}
-                    initialDislikes={aState.dislikes}
-                    initialMyVote={aState.myVote}
-                    onChange={(next) => setVoteA((prev) => ({ ...prev, [a.id]: next }))}
-                    size="sm"
-                  />
+                  <div className="flex shrink-0 items-center gap-1">
+                    <VoteButton
+                      target_type="appearance"
+                      target_id={a.id}
+                      initialLikes={aState.likes}
+                      initialDislikes={aState.dislikes}
+                      initialMyVote={aState.myVote}
+                      onChange={(next) => setVoteA((prev) => ({ ...prev, [a.id]: next }))}
+                      size="sm"
+                    />
+                    {bmA !== undefined && (
+                      <BookmarkButton
+                        target_type="appearance"
+                        target_id={a.id}
+                        initialBookmarked={bmA[a.id] ?? false}
+                        onChange={(bid, bm) => setBmA((prev) => { if (!prev) return prev; const n = { ...prev }; if (bm) n[bid] = true; else delete n[bid]; return n; })}
+                        size="sm"
+                      />
+                    )}
+                  </div>
                 </div>
                 {a.source_url && (
                   <div className="text-right">
@@ -238,11 +288,15 @@ function PlaceInfo({
   ext,
   rState,
   onChangeR,
+  isBookmarked,
+  onBookmarkChange,
 }: {
   restaurant: Restaurant;
   ext: ExternalInfo | null;
   rState: VoteState;
   onChangeR: (next: VoteState) => void;
+  isBookmarked?: boolean;
+  onBookmarkChange?: (id: number, bookmarked: boolean) => void;
 }) {
   const naver = ext?.naver ?? null;
   const placeId = ext?.place_id ?? null;
@@ -267,6 +321,14 @@ function PlaceInfo({
             initialMyVote={rState.myVote}
             onChange={onChangeR}
           />
+          {isBookmarked !== undefined && (
+            <BookmarkButton
+              target_type="restaurant"
+              target_id={restaurant.id}
+              initialBookmarked={isBookmarked}
+              onChange={onBookmarkChange}
+            />
+          )}
         </div>
       </div>
 

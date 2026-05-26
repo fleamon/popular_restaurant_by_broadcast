@@ -184,6 +184,77 @@ export const api = {
     return request<{ likes: number; dislikes: number; net_score: number }>(`/votes/score?${qs}`);
   },
 
+  // bookmarks
+  bookmarkIds: async () => {
+    const sb = getSupabaseBrowser();
+    const { data } = await sb.auth.getSession();
+    if (!data.session?.access_token) return {} as Record<string, true>;
+    return request<Record<string, true>>(`/bookmarks/mine/ids`, undefined, true);
+  },
+  addBookmark: (target_type: string, target_id: number) =>
+    request<{ ok: boolean }>(
+      `/bookmarks?target_type=${target_type}&target_id=${target_id}`,
+      { method: "POST" },
+      true,
+    ),
+  removeBookmark: (target_type: string, target_id: number) => {
+    const qs = new URLSearchParams({ target_type, target_id: String(target_id) });
+    return request<{ ok: boolean }>(`/bookmarks?${qs}`, { method: "DELETE" }, true);
+  },
+  myBookmarks: () =>
+    request<{
+      restaurants: { id: number; current_name: string; current_address: string }[];
+      channels: { id: number; name: string; thumbnail_url: string | null }[];
+      appearances: {
+        id: number;
+        episode_title: string | null;
+        aired_at: string | null;
+        restaurant_id: number | null;
+        restaurant_name: string | null;
+        channel_id: number | null;
+        channel_name: string | null;
+      }[];
+    }>(`/bookmarks/mine`, undefined, true),
+
+  // vote history
+  myVoteHistory: () =>
+    request<{
+      restaurants: { id: number; name: string; address: string; likes: number; dislikes: number; my_likes: number; my_dislikes: number }[];
+      channels: { id: number; name: string; likes: number; dislikes: number; my_likes: number; my_dislikes: number }[];
+      appearances: {
+        id: number;
+        episode_title: string | null;
+        restaurant_id: number | null;
+        channel_id: number | null;
+        restaurant_name: string | null;
+        channel_name: string | null;
+        likes: number;
+        dislikes: number;
+        my_likes: number;
+        my_dislikes: number;
+      }[];
+    }>(`/votes/my-history`, undefined, true),
+
+  // period ranking
+  restaurantRankingByPeriod: (from?: string, to?: string) => {
+    const qs = new URLSearchParams({ target_type: "restaurant" });
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    return request<RankingRow[]>(`/votes/ranking?${qs}`);
+  },
+  channelRankingByPeriod: (from?: string, to?: string) => {
+    const qs = new URLSearchParams({ target_type: "channel" });
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    return request<RankingRow[]>(`/votes/ranking?${qs}`);
+  },
+  appearanceRankingByPeriod: (from?: string, to?: string) => {
+    const qs = new URLSearchParams({ target_type: "appearance" });
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    return request<AppearanceScore[]>(`/votes/ranking?${qs}`);
+  },
+
   // visits — 좌측 하단 방문자 위젯
   trackVisit: (visitor_id: string) =>
     request<{ ok: boolean }>(`/visits/track`, { method: "POST", body: JSON.stringify({ visitor_id }) }),

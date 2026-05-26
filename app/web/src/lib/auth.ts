@@ -77,6 +77,25 @@ export async function sendPasswordReset(email: string) {
   }
 }
 
+/** 현재 비밀번호 확인 후 새 비밀번호로 변경 — 로그인 상태에서 마이페이지에서 호출. */
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const sb = getSupabaseBrowser();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user?.email) throw new Error("로그인 정보를 가져올 수 없습니다.");
+  // 현재 비밀번호 검증 — re-authenticate
+  const { error: reAuthError } = await sb.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  });
+  if (reAuthError) throw new Error("현재 비밀번호가 올바르지 않습니다.");
+  try {
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  } catch (e: unknown) {
+    throw mapAuthError(e);
+  }
+}
+
 /** 새 비밀번호 적용 — reset-password 페이지에서 호출. 로그인된 세션(또는 recovery 세션)이 있을 때만 동작. */
 export async function updatePassword(newPassword: string) {
   const sb = getSupabaseBrowser();

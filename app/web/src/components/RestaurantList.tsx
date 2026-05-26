@@ -1,5 +1,6 @@
 "use client";
 
+import BookmarkButton from "@/components/BookmarkButton";
 import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
 import type { Restaurant } from "@/lib/api";
@@ -8,15 +9,18 @@ type Props = {
   rows: Restaurant[];
   myVotes?: Record<string, 1 | -1>;
   onMyVoteChange?: (restaurantId: number, myVote: 1 | -1 | null) => void;
+  myBookmarks?: Record<string, true>;
+  onBookmarkChange?: (restaurantId: number, bookmarked: boolean) => void;
 };
 
 /** 검색 결과 — 리스트 뷰. 식당 좋아요/싫어요 투표 가능. */
-export default function RestaurantList({ rows, myVotes, onMyVoteChange }: Props) {
+export default function RestaurantList({ rows, myVotes, onMyVoteChange, myBookmarks, onBookmarkChange }: Props) {
   if (rows.length === 0) return <Empty />;
   return (
     <ul className="divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white">
       {rows.map((r) => {
         const mv = myVotes?.[String(r.id)] ?? null;
+        const isBookmarked = myBookmarks?.[String(r.id)] ?? false;
         return (
           <li key={r.id} className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-brand-surface">
             <div className="min-w-0 flex-1">
@@ -32,6 +36,15 @@ export default function RestaurantList({ rows, myVotes, onMyVoteChange }: Props)
               <div className="mt-1 truncate text-sm text-neutral-600">{r.current_address}</div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {myBookmarks !== undefined && (
+                <BookmarkButton
+                  target_type="restaurant"
+                  target_id={r.id}
+                  initialBookmarked={isBookmarked}
+                  onChange={(id, bm) => onBookmarkChange?.(id, bm)}
+                  size="sm"
+                />
+              )}
               <VoteLabel kind="restaurant" />
               <VoteButton
                 target_type="restaurant"

@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from .routers import admin, auth, channels, requests as requests_router, restaurants, users, visits, votes
+from .routers import admin, auth, bookmarks, channels, requests as requests_router, restaurants, users, visits, votes
 
 # redoc_url=None 으로 내장 ReDoc 라우트를 끄고, 아래에서 안정 버전 CDN 으로 직접 등록.
 # FastAPI 기본값이 redoc@next 를 가리키는데 해당 태그 번들 경로가 깨져서 화면이 빈다.
@@ -40,6 +40,7 @@ app.add_middleware(
 app.include_router(restaurants.router)
 app.include_router(channels.router)
 app.include_router(votes.router)
+app.include_router(bookmarks.router)
 app.include_router(admin.router)
 app.include_router(auth.router)
 app.include_router(users.router)

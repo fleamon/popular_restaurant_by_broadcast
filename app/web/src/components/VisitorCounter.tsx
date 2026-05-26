@@ -3,16 +3,15 @@
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { useMe } from "@/lib/me";
+import { isSuperadmin } from "@/lib/role";
 import { getOrCreateVisitorId } from "@/lib/visitor";
 
 /** 모든 페이지 좌측 하단 fixed 위젯 — 오늘 / 총 unique 방문자.
- *  마운트 시:
- *    1) 익명 visitor_id 확보 (localStorage)
- *    2) /visits/track POST — 오늘 1회만 카운트 (백엔드 unique 인덱스)
- *    3) /visits/stats GET — 표시할 숫자 fetch
- *  실패해도 silent — 위젯이 단순히 안 보이거나 0 으로 표시되고 사이트 본 기능엔 영향 없음.
+ *  superadmin 로그인 시에만 표시.
  */
 export default function VisitorCounter() {
+  const { me } = useMe();
   const [stats, setStats] = useState<{ today: number; total: number } | null>(null);
 
   useEffect(() => {
@@ -40,7 +39,7 @@ export default function VisitorCounter() {
     void go();
   }, []);
 
-  if (!stats) return null;
+  if (!isSuperadmin(me) || !stats) return null;
 
   return (
     <div

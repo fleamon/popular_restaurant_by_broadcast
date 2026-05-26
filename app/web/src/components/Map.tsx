@@ -8,6 +8,7 @@ import {
   useKakaoLoader,
 } from "react-kakao-maps-sdk";
 
+import BookmarkButton from "@/components/BookmarkButton";
 import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
 import { api, type Appearance, type Restaurant } from "@/lib/api";
@@ -70,6 +71,11 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
   const [voteC, setVoteC] = useState<Record<number, VoteState>>({});
   const [voteA, setVoteA] = useState<Record<number, VoteState>>({});
 
+  // 북마크 상태 — undefined: 비로그인 (버튼 숨김), Record: 로그인 (버튼 표시)
+  const [myBR, setMyBR] = useState<Record<string, true> | undefined>(undefined);
+  const [myBC, setMyBC] = useState<Record<string, true> | undefined>(undefined);
+  const [myBA, setMyBA] = useState<Record<string, true> | undefined>(undefined);
+
   // 페이지 마운트 시 내 투표 한 번에 fetch (3 타입). 비로그인은 401 → 빈 객체.
   useEffect(() => {
     const mergeMy = (setter: typeof setVoteR) => (mv: MyVotes) => {
@@ -85,6 +91,17 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
     api.myVotes("restaurant").then(mergeMy(setVoteR)).catch(() => {});
     api.myVotes("channel").then(mergeMy(setVoteC)).catch(() => {});
     api.myVotes("appearance").then(mergeMy(setVoteA)).catch(() => {});
+    api.bookmarkIds().then((ids) => {
+      const r: Record<string, true> = {};
+      const c: Record<string, true> = {};
+      const a: Record<string, true> = {};
+      for (const key of Object.keys(ids)) {
+        if (key.startsWith("restaurant:")) r[key.slice("restaurant:".length)] = true;
+        else if (key.startsWith("channel:")) c[key.slice("channel:".length)] = true;
+        else if (key.startsWith("appearance:")) a[key.slice("appearance:".length)] = true;
+      }
+      setMyBR(r); setMyBC(c); setMyBA(a);
+    }).catch(() => {});
   }, []);
 
   // restaurant_id → 대표 appearance 의 핀 표시 정보(채널 썸네일 + 채널명 첫글자)
@@ -223,6 +240,12 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
           setVoteR={setVoteR}
           setVoteC={setVoteC}
           setVoteA={setVoteA}
+          myBR={myBR}
+          myBC={myBC}
+          myBA={myBA}
+          onBookmarkChangeR={(id, bm) => setMyBR((prev) => { if (!prev) return prev; const n = { ...prev }; if (bm) n[String(id)] = true; else delete n[String(id)]; return n; })}
+          onBookmarkChangeC={(id, bm) => setMyBC((prev) => { if (!prev) return prev; const n = { ...prev }; if (bm) n[String(id)] = true; else delete n[String(id)]; return n; })}
+          onBookmarkChangeA={(id, bm) => setMyBA((prev) => { if (!prev) return prev; const n = { ...prev }; if (bm) n[String(id)] = true; else delete n[String(id)]; return n; })}
         />
       )}
     </div>
@@ -280,6 +303,12 @@ function PinModal({
   setVoteR,
   setVoteC,
   setVoteA,
+  myBR,
+  myBC,
+  myBA,
+  onBookmarkChangeR,
+  onBookmarkChangeC,
+  onBookmarkChangeA,
 }: {
   restaurant: Restaurant;
   appearances: Appearance[];
@@ -291,6 +320,12 @@ function PinModal({
   setVoteR: VoteMapSetter;
   setVoteC: VoteMapSetter;
   setVoteA: VoteMapSetter;
+  myBR?: Record<string, true>;
+  myBC?: Record<string, true>;
+  myBA?: Record<string, true>;
+  onBookmarkChangeR?: (id: number, bookmarked: boolean) => void;
+  onBookmarkChangeC?: (id: number, bookmarked: boolean) => void;
+  onBookmarkChangeA?: (id: number, bookmarked: boolean) => void;
 }) {
   const rState = voteR[restaurant.id] ?? { likes: restaurant.likes ?? 0, dislikes: restaurant.dislikes ?? 0, myVote: null };
 
@@ -346,7 +381,7 @@ function PinModal({
       <div className="p-3 pr-9 sm:p-4 sm:pr-10">
         <div className="pr-2 text-sm font-bold text-brand sm:text-base">{restaurant.current_name}</div>
         <div className="mt-0.5 text-[11px] text-neutral-500 sm:mt-1 sm:text-xs">{restaurant.current_address}</div>
-        {/* 식당 투표 — 라벨로 어떤 대상인지 명시 */}
+        {/* 식당 투표 + 북마크 */}
         <div className="mt-2 flex items-center gap-2">
           <VoteLabel kind="restaurant" />
           <VoteButton
@@ -358,6 +393,15 @@ function PinModal({
             onChange={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
             size="sm"
           />
+          {myBR !== undefined && (
+            <BookmarkButton
+              target_type="restaurant"
+              target_id={restaurant.id}
+              initialBookmarked={myBR[String(restaurant.id)] ?? false}
+              onChange={onBookmarkChangeR}
+              size="sm"
+            />
+          )}
         </div>
         <div className="mt-2 flex gap-2 sm:mt-3">
           <a
@@ -395,6 +439,10 @@ function PinModal({
                 chState={voteC[a.channel_id] ?? { likes: a.channels?.likes ?? 0, dislikes: a.channels?.dislikes ?? 0, myVote: null }}
                 onChangeApp={(next) => setVoteA((prev) => ({ ...prev, [a.id]: next }))}
                 onChangeCh={(next) => setVoteC((prev) => ({ ...prev, [a.channel_id]: next }))}
+                chBookmarked={myBC !== undefined ? (myBC[String(a.channel_id)] ?? false) : undefined}
+                aBookmarked={myBA !== undefined ? (myBA[String(a.id)] ?? false) : undefined}
+                onChangeChBm={(id, bm) => onBookmarkChangeC?.(id, bm)}
+                onChangeABm={(id, bm) => onBookmarkChangeA?.(id, bm)}
               />
             ))}
           </ul>
@@ -419,18 +467,24 @@ function VideoRow({
   chState,
   onChangeApp,
   onChangeCh,
+  chBookmarked,
+  aBookmarked,
+  onChangeChBm,
+  onChangeABm,
 }: {
   app: Appearance;
   appState: VoteState;
   chState: VoteState;
   onChangeApp: (next: VoteState) => void;
   onChangeCh: (next: VoteState) => void;
+  chBookmarked?: boolean;
+  aBookmarked?: boolean;
+  onChangeChBm?: (id: number, bm: boolean) => void;
+  onChangeABm?: (id: number, bm: boolean) => void;
 }) {
   const ytId = app.youtube_video_id ?? extractYouTubeId(app.source_url);
   const url = app.source_url ?? (ytId ? `https://www.youtube.com/watch?v=${ytId}` : null);
-  // 자세히보기 페이지의 YouTube 임베드와 동일한 영상의 썸네일을 사용.
   const thumb = app.thumbnail_url ?? ytThumbUrl(ytId, "mqdefault");
-  // 모바일 컴팩트: 썸네일 h-12 w-16, 패딩 p-2 — 데스크탑은 기존
   return (
     <li className="p-2 sm:p-3">
       <div className="flex gap-2 sm:gap-3">
@@ -452,23 +506,34 @@ function VideoRow({
           )
         )}
         <div className="flex-1 min-w-0 space-y-1 sm:space-y-1.5">
-          {/* 채널 라인 — 라벨 + 채널명 + 채널 투표 */}
+          {/* 채널 라인 — 라벨 + 채널명 + 투표 + 북마크 */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1.5">
               <VoteLabel kind="channel" />
               <span className="truncate text-[11px] font-bold text-neutral-700 sm:text-xs">{app.channels?.name ?? "—"}</span>
             </div>
-            <VoteButton
-              target_type="channel"
-              target_id={app.channel_id}
-              initialLikes={chState.likes}
-              initialDislikes={chState.dislikes}
-              initialMyVote={chState.myVote}
-              onChange={onChangeCh}
-              size="sm"
-            />
+            <div className="flex shrink-0 items-center gap-0.5">
+              <VoteButton
+                target_type="channel"
+                target_id={app.channel_id}
+                initialLikes={chState.likes}
+                initialDislikes={chState.dislikes}
+                initialMyVote={chState.myVote}
+                onChange={onChangeCh}
+                size="sm"
+              />
+              {chBookmarked !== undefined && (
+                <BookmarkButton
+                  target_type="channel"
+                  target_id={app.channel_id}
+                  initialBookmarked={chBookmarked}
+                  onChange={onChangeChBm}
+                  size="sm"
+                />
+              )}
+            </div>
           </div>
-          {/* 영상 라인 — 라벨+제목 한 줄, 투표는 별도 줄 우측 정렬 (모달 폭 안에서 잘림 방지) */}
+          {/* 영상 라인 — 라벨+제목 한 줄, 투표+북마크는 별도 줄 우측 정렬 */}
           <div>
             <div className="flex min-w-0 items-start gap-1.5">
               <VoteLabel kind="appearance" className="mt-0.5" />
@@ -478,7 +543,7 @@ function VideoRow({
                 ) : (app.episode_title ?? "에피소드")}
               </div>
             </div>
-            <div className="mt-1 flex justify-end">
+            <div className="mt-1 flex items-center justify-end gap-0.5">
               <VoteButton
                 target_type="appearance"
                 target_id={app.id}
@@ -488,6 +553,15 @@ function VideoRow({
                 onChange={onChangeApp}
                 size="sm"
               />
+              {aBookmarked !== undefined && (
+                <BookmarkButton
+                  target_type="appearance"
+                  target_id={app.id}
+                  initialBookmarked={aBookmarked}
+                  onChange={onChangeABm}
+                  size="sm"
+                />
+              )}
             </div>
           </div>
         </div>
