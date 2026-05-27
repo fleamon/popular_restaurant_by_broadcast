@@ -73,6 +73,9 @@ export default function HomePage() {
   const [page, setPage] = useState(1);
   // 지도 viewport bounds — Map 컴포넌트가 onIdle 시 통지 → 그 영역만 fetch
   const [bounds, setBounds] = useState<Bounds | null>(null);
+  // 초기 DB 로딩 상태 — 오랜만에 접속 시 Supabase 가 느릴 때 표시
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const firstLoadDone = useRef(false);
   // 식당 내 투표 상태 — 페이지 마운트 시 fetch. List/Grid 카드에 prop 으로 전달.
   const [myR, setMyR] = useState<Record<string, 1 | -1>>({});
   // 식당 북마크 상태 — undefined: 미로그인(버튼 숨김), Record: 로그인됨
@@ -228,7 +231,15 @@ export default function HomePage() {
       fetchParams = { ...params, page, page_size: pageSize, sort: "likes_desc" };
     }
     const t = setTimeout(() => {
-      api.listRestaurants(fetchParams).then(setRows).catch(() => setRows([]));
+      api.listRestaurants(fetchParams)
+        .then(setRows)
+        .catch(() => setRows([]))
+        .finally(() => {
+          if (!firstLoadDone.current) {
+            firstLoadDone.current = true;
+            setIsLoadingData(false);
+          }
+        });
     }, 200);
     return () => clearTimeout(t);
   }, [params, view, page, pageSize, bounds]);
@@ -312,6 +323,22 @@ export default function HomePage() {
 
   return (
     <div>
+      {isLoadingData && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+          <div className="flex items-center gap-2.5 rounded-full bg-white/90 px-5 py-2.5 shadow-sm ring-1 ring-neutral-200/70">
+            <svg
+              className="h-3.5 w-3.5 animate-spin text-neutral-400"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-xs font-medium text-neutral-400">맛있는 기능을 불러오고 있습니다</span>
+          </div>
+        </div>
+      )}
       {/* 헤더 라인 — 모바일은 컴팩트(h1 작게 / 공지 칩 짧게 / 카톡 아이콘만) */}
       <div className="mb-2 flex flex-wrap items-center gap-2 sm:gap-4">
         <div className="flex items-baseline gap-2 sm:gap-4">
