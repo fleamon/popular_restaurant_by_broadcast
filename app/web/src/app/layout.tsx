@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Suspense } from "react";
 
+import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import VisitorCounter from "@/components/VisitorCounter";
 import "./globals.css";
@@ -11,9 +12,27 @@ import "./globals.css";
 // 검수 통과 후: 페이지에 <AdSlot slot="..." /> 로 광고 단위 배치.
 const AD_CLIENT = process.env.NEXT_PUBLIC_ADSENSE_CLIENT ?? "";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.xn--0z2byb.com";
+const SITE_IMAGE = `${SITE_URL}/white_eyes_blue.png`;
+
 export const metadata: Metadata = {
   title: "백안맛지도 — 전국 맛집 지도",
   description: "TV·유튜브에 소개된 전국 맛집을 가장 가독성 좋게 보는 지도",
+  openGraph: {
+    type: "website",
+    locale: "ko_KR",
+    url: SITE_URL,
+    siteName: "백안맛지도",
+    title: "백안맛지도 — 전국 맛집 지도",
+    description: "TV·유튜브에 소개된 전국 맛집을 가장 가독성 좋게 보는 지도",
+    images: [{ url: SITE_IMAGE, width: 800, height: 400, alt: "백안맛지도" }],
+  },
+  twitter: {
+    card: "summary",
+    title: "백안맛지도 — 전국 맛집 지도",
+    description: "TV·유튜브에 소개된 전국 맛집을 가장 가독성 좋게 보는 지도",
+    images: [SITE_IMAGE],
+  },
   ...(AD_CLIENT && {
     other: {
       // AdSense 일부 검수 케이스에서 페이지 head 의 인증 메타 요구
@@ -45,6 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto max-w-6xl overflow-x-hidden px-4 py-3">
           <Suspense fallback={null}>{children}</Suspense>
         </main>
+        <Footer />
         {/* 좌측 하단 fixed 방문자 카운터 — 모든 페이지에 노출 */}
         <VisitorCounter />
       </body>
