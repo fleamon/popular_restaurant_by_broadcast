@@ -34,11 +34,11 @@ export default function PrivacyPage() {
           <ul className="list-disc space-y-1 pl-5 text-neutral-600">
             <li>
               <strong className="text-neutral-800">회원가입 시</strong>: 이메일 주소, 닉네임,
-              암호화된 비밀번호(Supabase Auth 처리, 평문 미보관)
+              암호화된 비밀번호(평문 미보관)
             </li>
             <li>
-              <strong className="text-neutral-800">소셜 로그인 시</strong>: OAuth 제공자
-              (카카오·구글)로부터 받는 이메일 주소 및 프로필 정보
+              <strong className="text-neutral-800">소셜 로그인 시</strong>: 연동한 소셜 계정으로부터
+              받는 이메일 주소 및 프로필 정보
             </li>
             <li>
               <strong className="text-neutral-800">서비스 이용 시</strong>: 투표·북마크 기록,
@@ -92,20 +92,13 @@ export default function PrivacyPage() {
 
         <section className="space-y-2">
           <h2 className="font-bold text-neutral-900">4. 제3자 서비스</h2>
-          <p>서비스 운영을 위해 다음 외부 서비스를 사용하며, 각 서비스의 개인정보처리방침이 별도로 적용됩니다.</p>
+          <p>서비스 운영 과정에서 아래 외부 서비스가 사용됩니다. 각 서비스의 개인정보처리방침이 별도로 적용됩니다.</p>
           <ul className="list-disc space-y-1 pl-5 text-neutral-600">
             <li>
-              <strong className="text-neutral-800">Supabase</strong> — 회원 인증 및 데이터베이스
-              (미국 서버 처리, GDPR 준수)
+              <strong className="text-neutral-800">Google AdSense</strong> — 광고 게재(쿠키 사용)
             </li>
             <li>
-              <strong className="text-neutral-800">Google AdSense</strong> — 광고 서비스
-            </li>
-            <li>
-              <strong className="text-neutral-800">Kakao Maps API</strong> — 지도 표시
-            </li>
-            <li>
-              <strong className="text-neutral-800">Kakao 소셜 로그인</strong> — 선택적 OAuth 인증
+              <strong className="text-neutral-800">Kakao Maps</strong> — 지도 표시(지도 SDK 로드)
             </li>
           </ul>
         </section>
