@@ -1,9 +1,10 @@
-"""방문자 통계 — 좌측 하단 위젯 (오늘 / 총 unique 방문자)."""
+"""방문자 통계 — 좌측 하단 위젯 (오늘 / 총 unique 방문자) + 일별 추이."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from collections import Counter
+from datetime import date as date_type, datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..services.supabase_client import exec_with_retry, get_service_client
@@ -74,3 +75,61 @@ def get_stats() -> dict:
         start += PAGE
 
     return {"today": today_count, "total": len(all_ids)}
+
+
+@router.get("/first-date")
+def get_first_date() -> dict:
+    """DB 에 기록된 최초 방문 날짜."""
+    sb = get_service_client()
+    res = exec_with_retry(
+        sb.table("visits").select("visit_date").order("visit_date").limit(1)
+    )
+    first = res.data[0]["visit_date"] if res.data else _today_kst_iso()
+    return {"first_date": first}
+
+
+@router.get("/daily")
+def get_daily(
+    days: int = 30,
+    start: str | None = Query(default=None, description="시작일 YYYY-MM-DD"),
+    end:   str | None = Query(default=None, description="종료일 YYYY-MM-DD"),
+) -> list[dict]:
+    """일별 unique 방문자 수 (KST 기준).
+    start/end 가 모두 주어지면 해당 범위, 아니면 오늘 기준 최근 days 일.
+    """
+    sb = get_service_client()
+    today = date_type.fromisoformat(_today_kst_iso())
+
+    if start and end:
+        from_date = date_type.fromisoformat(start)
+        to_date   = date_type.fromisoformat(end)
+    else:
+        from_date = today - timedelta(days=days - 1)
+        to_date   = today
+
+    total_days = (to_date - from_date).days + 1
+
+    all_rows: list[dict] = []
+    offset = 0
+    PAGE = 1000
+    while True:
+        chunk = (exec_with_retry(
+            sb.table("visits")
+              .select("visit_date")
+              .gte("visit_date", from_date.isoformat())
+              .lte("visit_date", to_date.isoformat())
+              .range(offset, offset + PAGE - 1)
+        ).data or [])
+        all_rows.extend(chunk)
+        if len(chunk) < PAGE:
+            break
+        offset += PAGE
+
+    counts: Counter[str] = Counter(
+        r["visit_date"] for r in all_rows if r.get("visit_date")
+    )
+    return [
+        {"date": (from_date + timedelta(days=i)).isoformat(),
+         "count": counts.get((from_date + timedelta(days=i)).isoformat(), 0)}
+        for i in range(total_days)
+    ]

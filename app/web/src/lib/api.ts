@@ -260,6 +260,14 @@ export const api = {
     request<{ ok: boolean }>(`/visits/track`, { method: "POST", body: JSON.stringify({ visitor_id }) }),
   visitStats: () =>
     request<{ today: number; total: number }>(`/visits/stats`),
+  visitFirstDate: () =>
+    request<{ first_date: string }>(`/visits/first-date`),
+  visitDaily: (days?: number, start?: string, end?: string) => {
+    const qs = new URLSearchParams();
+    if (start && end) { qs.set("start", start); qs.set("end", end); }
+    else qs.set("days", String(days ?? 30));
+    return request<{ date: string; count: number }[]>(`/visits/daily?${qs}`);
+  },
 
   // admin — channel auto-ingest (SSE)
   ingestChannel: (handle: string, max_videos: number) =>
