@@ -32,6 +32,8 @@ type KakaoMapInstance = {
     getSouthWest: () => { getLat: () => number; getLng: () => number };
     getNorthEast: () => { getLat: () => number; getLng: () => number };
   };
+  setCenter: (latlng: unknown) => void;
+  setLevel:  (level: number)  => void;
 };
 function notify(
   map: KakaoMapInstance,
@@ -60,6 +62,44 @@ const DEFAULT_LEVEL = 4;
 export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, level = DEFAULT_LEVEL, onBoundsChanged }: Props) {
   const appkey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY ?? "";
   const [loading, error] = useKakaoLoader({ appkey, libraries: ["services"] });
+
+  const mapRef = useRef<KakaoMapInstance | null>(null);
+
+  // 현재 위치
+  const [locating,  setLocating]  = useState(false);
+  const [userPos,   setUserPos]   = useState<{ lat: number; lng: number } | null>(null);
+  const [locError,  setLocError]  = useState<string | null>(null);
+
+  function handleLocate() {
+    if (!navigator.geolocation) {
+      setLocError("이 브라우저는 위치 정보를 지원하지 않습니다.");
+      return;
+    }
+    setLocating(true);
+    setLocError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setUserPos({ lat, lng });
+        setLocating(false);
+        if (mapRef.current) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const kakaoMaps = (window as any).kakao?.maps;
+          if (kakaoMaps) {
+            mapRef.current.setCenter(new kakaoMaps.LatLng(lat, lng));
+            mapRef.current.setLevel(4);
+          }
+        }
+      },
+      (err) => {
+        setLocating(false);
+        setLocError(err.code === 1 ? "위치 권한이 거부되었습니다." : "현재 위치를 가져올 수 없습니다.");
+        setTimeout(() => setLocError(null), 4000);
+      },
+      { timeout: 10000, maximumAge: 30000 },
+    );
+  }
 
   const [selected, setSelected] = useState<Restaurant | null>(null);
   const [topApps, setTopApps] = useState<Appearance[]>([]);
@@ -206,12 +246,23 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
         // 지도 인스턴스 생성 직후 즉시 첫 bounds 통지 — onIdle 까지 기다리지 않고 viewport 핀 바로 보임.
         // 가끔 onCreate 시점에 getBounds 가 미정이라 다음 tick 으로 한 번 미룸.
         onCreate={(map) => {
+          mapRef.current = map as unknown as KakaoMapInstance;
           if (!onBoundsChanged) return;
-          setTimeout(() => notify(map, onBoundsChanged), 0);
+          setTimeout(() => notify(map as unknown as KakaoMapInstance, onBoundsChanged), 0);
         }}
         // 사용자 조작 완료(이동/줌 idle) → viewport bounds 부모에게 통지 → 그 영역만 fetch.
-        onIdle={(map) => { if (onBoundsChanged) notify(map, onBoundsChanged); }}
+        onIdle={(map) => { if (onBoundsChanged) notify(map as unknown as KakaoMapInstance, onBoundsChanged); }}
       >
+        {/* 현재 위치 마커 */}
+        {userPos && (
+          <CustomOverlayMap position={userPos} yAnchor={0.5} zIndex={5}>
+            <div className="relative flex items-center justify-center">
+              <div className="h-4 w-4 rounded-full bg-brand ring-2 ring-white shadow-md" />
+              <div className="absolute h-8 w-8 animate-ping rounded-full bg-brand opacity-20" />
+            </div>
+          </CustomOverlayMap>
+        )}
+
         {pinnable.map((r) => {
           const rep = restaurantRep.get(r.id);
           const thumb = rep?.channelThumb ?? null;
@@ -248,6 +299,35 @@ export default function RestaurantMap({ restaurants, center = DEFAULT_CENTER, le
           onBookmarkChangeA={(id, bm) => setMyBA((prev) => { if (!prev) return prev; const n = { ...prev }; if (bm) n[String(id)] = true; else delete n[String(id)]; return n; })}
         />
       )}
+
+      {/* 현재 위치 버튼 */}
+      <div className="absolute bottom-10 right-2.5 z-10 flex flex-col items-end gap-1">
+        {locError && (
+          <div className="rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs text-white shadow-lg">
+            {locError}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleLocate}
+          disabled={locating}
+          aria-label="현재 위치로 이동"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-neutral-200 transition hover:bg-neutral-50 disabled:opacity-60"
+        >
+          {locating ? (
+            <svg className="h-5 w-5 animate-spin text-brand" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg className="h-5 w-5 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+              <path d="M12 5a7 7 0 1 0 7 7" />
+            </svg>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

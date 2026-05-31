@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "백안맛지도 개인정보처리방침",
 };
 
-const UPDATED = "2026년 5월 29일";
+const UPDATED = "2026년 5월 31일";
 const CONTACT = "fleabackx@gmail.com";
 
 export default function PrivacyPage() {
@@ -52,7 +52,20 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="font-bold text-neutral-900">3. 쿠키 및 광고</h2>
+          <h2 className="font-bold text-neutral-900">3. 위치 정보</h2>
+          <p>
+            검색 탭 지도 화면에서 <strong>현재 위치</strong> 버튼을 클릭할 때에만 브라우저를 통해
+            위치 정보 접근 권한을 요청합니다.
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-neutral-600">
+            <li>위치 정보는 지도 중심을 이동하는 데에만 사용되며, 서버로 전송되거나 저장되지 않습니다.</li>
+            <li>위치 권한을 허용하지 않으면 해당 기능은 동작하지 않으며, 다른 서비스 이용에는 영향이 없습니다.</li>
+            <li>권한은 브라우저 설정에서 언제든지 변경하거나 철회할 수 있습니다.</li>
+          </ul>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="font-bold text-neutral-900">4. 쿠키 및 광고</h2>
           <p>
             이 서비스는 <strong>Google AdSense</strong>를 통해 광고를 제공합니다.
             Google은 광고 게재·맞춤화를 위해 쿠키를 사용하며, 이를 통해 방문 기록이
@@ -91,7 +104,7 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="font-bold text-neutral-900">4. 제3자 서비스</h2>
+          <h2 className="font-bold text-neutral-900">5. 제3자 서비스</h2>
           <p>서비스 운영 과정에서 아래 외부 서비스가 사용됩니다. 각 서비스의 개인정보처리방침이 별도로 적용됩니다.</p>
           <ul className="list-disc space-y-1 pl-5 text-neutral-600">
             <li>
@@ -104,7 +117,7 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="font-bold text-neutral-900">5. 정보 보유 및 삭제</h2>
+          <h2 className="font-bold text-neutral-900">6. 정보 보유 및 삭제</h2>
           <ul className="list-disc space-y-1 pl-5 text-neutral-600">
             <li>회원 정보는 서비스 탈퇴 시 즉시 삭제 요청 가능합니다.</li>
             <li>투표·북마크 기록은 계정 삭제 시 함께 삭제됩니다.</li>
@@ -115,7 +128,7 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="font-bold text-neutral-900">6. 이용자 권리</h2>
+          <h2 className="font-bold text-neutral-900">7. 이용자 권리</h2>
           <p>이용자는 언제든지 다음 권리를 행사할 수 있습니다.</p>
           <ul className="list-disc space-y-1 pl-5 text-neutral-600">
             <li>개인정보 열람·정정·삭제 요청</li>
@@ -125,7 +138,7 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="font-bold text-neutral-900">7. 연락처</h2>
+          <h2 className="font-bold text-neutral-900">8. 연락처</h2>
           <p>
             개인정보 관련 문의는 아래 이메일로 연락해 주세요.
           </p>
@@ -140,7 +153,7 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="font-bold text-neutral-900">8. 방침 변경</h2>
+          <h2 className="font-bold text-neutral-900">9. 방침 변경</h2>
           <p>
             본 방침은 법령·서비스 변경에 따라 개정될 수 있으며, 변경 시 이 페이지에
             수정일과 함께 공지합니다.
