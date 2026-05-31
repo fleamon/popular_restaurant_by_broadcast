@@ -100,17 +100,27 @@ export default function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="font-bold text-neutral-900">4. 쿠키 및 광고</h2>
           <p>
-            이 서비스는 <strong>Google AdSense</strong>를 통해 광고를 제공합니다.
-            Google은 광고 게재·맞춤화를 위해 쿠키를 사용하며, 이를 통해 방문 기록이
-            익명 통계 형태로 처리될 수 있습니다.
+            이 서비스는 <strong>Google AdSense</strong>를 통해 광고를 제공합니다. 광고 게재
+            과정에서 Google을 포함한 제3자 광고 공급업체는 <strong>쿠키·웹 비콘·IP 주소·기타
+            식별자</strong>를 사용할 수 있습니다.
           </p>
+          <ul className="list-disc space-y-1 pl-5 text-neutral-600">
+            <li>
+              Google을 포함한 제3자 공급업체는 <strong>쿠키(예: DoubleClick 쿠키)</strong>를 사용하여
+              이용자가 본 사이트 또는 다른 사이트를 방문한 기록을 기반으로 광고를 게재합니다.
+            </li>
+            <li>
+              제3자 공급업체와 광고 네트워크 역시 본 사이트에 광고를 게재하기 위해 자체 쿠키를 사용할 수 있습니다.
+            </li>
+          </ul>
           <p>
             <strong>맞춤형(행동기반) 광고 및 동의</strong> — 맞춤형 광고를 위한 쿠키는
-            이용자의 동의를 기반으로 사용됩니다. 유럽경제지역(EEA)·영국 등 사전 동의가
-            요구되는 지역의 이용자에게는 Google 인증 동의 관리 도구를 통해 광고 쿠키
-            동의 여부를 묻는 안내가 표시될 수 있으며, 그 외 지역의 이용자는 아래 방법으로
-            언제든지 맞춤형 광고를 거부하거나 쿠키를 차단할 수 있습니다. 동의를 거부해도
-            맞춤형이 아닌 일반 광고는 게재될 수 있습니다.
+            이용자의 동의를 기반으로 사용됩니다. 유럽경제지역(EEA)·영국·스위스 등 사전 동의가
+            요구되는 지역의 이용자에게는 <strong>Google 인증 동의 관리 플랫폼(CMP)</strong>을 통해
+            광고 쿠키 동의 여부를 묻는 안내가 표시되며, 그 외 지역의 이용자는 아래 방법으로
+            언제든지 맞춤형 광고를 거부하거나 쿠키를 차단할 수 있습니다. 동의를 거부하거나
+            철회해도 맞춤형이 아닌 일반 광고는 게재될 수 있습니다. 또한 본 서비스는 13세 미만
+            아동을 대상으로 하지 않으며, 아동에게 관심 기반 광고를 게재하지 않습니다.
           </p>
           <ul className="list-disc space-y-1 pl-5 text-neutral-600">
             <li>
@@ -125,6 +135,17 @@ export default function PrivacyPage() {
               </a>
             </li>
             <li>
+              Google 파트너 사이트에서의 데이터 사용:{" "}
+              <a
+                href="https://policies.google.com/technologies/partner-sites"
+                target="_blank"
+                rel="noreferrer"
+                className="text-brand underline-offset-2 hover:underline"
+              >
+                Google이 파트너 사이트의 데이터를 사용하는 방식
+              </a>
+            </li>
+            <li>
               광고 맞춤 설정 해제(동의 철회):{" "}
               <a
                 href="https://www.google.com/settings/ads"
@@ -133,6 +154,17 @@ export default function PrivacyPage() {
                 className="text-brand underline-offset-2 hover:underline"
               >
                 Google 광고 설정
+              </a>
+            </li>
+            <li>
+              제3자 공급업체의 맞춤형 광고 일괄 거부:{" "}
+              <a
+                href="https://www.aboutads.info/choices/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-brand underline-offset-2 hover:underline"
+              >
+                www.aboutads.info/choices
               </a>
             </li>
             <li>

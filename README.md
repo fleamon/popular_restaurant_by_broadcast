@@ -34,7 +34,6 @@ popular_restaurant_by_broadcast/
 ├── database/
 │   ├── schema.sql          # 전체 스키마 (한 번에 실행 — 최신 상태)
 │   ├── migrations/         # 0001 ~ 누적 마이그레이션 (운영 DB 증분 적용)
-│   ├── seed.sql            # 로컬 테스트용 더미 시드 (선택 — schema 적용 후 실행, 멱등)
 │   └── ERD.md              # 테이블 관계 다이어그램 (mermaid)
 ├── data/                   # 콘솔용 일회성/배치 스크립트
 │   ├── ingest_channels.py        # YouTube 채널 자동 수집 (CLI 진입점)
