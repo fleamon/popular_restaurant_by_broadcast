@@ -1,0 +1,37 @@
+# YouTube 저장 데이터 동기화 — 제목/썸네일 갱신 + 삭제된 영상 정리.
+# YouTube API 약관(저장 데이터 주기적 갱신·원본 삭제 시 동기 삭제) 준수 목적.
+#
+# 자동: 매월 1·26일(≈25일 주기)에 실행 — YouTube 30일 한도 이내 유지.
+# 수동: Repo → Actions → "youtube-sync" → Run workflow.
+#
+# 진입점은 `python -m data.sync_youtube` (저장소 루트 기준 — relative import 가
+# app.api.services 를 끌어오므로 working-directory 를 data 로 잡으면 안 됨).
+name: youtube-sync
+
+on:
+  schedule:
+    - cron: "0 18 */25 * *"   # 매월 1·26일 18:00 UTC (≈ 03:00 KST 익일)
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            app/api/requirements.txt
+            data/requirements.txt
+      # sync_youtube 는 app.api.services 를 import → 두 의존성 모두 필요.
+      - run: |
+          pip install -r app/api/requirements.txt
+          pip install -r data/requirements.txt
+      - name: Run sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: python -m data.sync_youtube

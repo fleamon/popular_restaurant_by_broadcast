@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import Pagination from "@/components/Pagination";
 import VisitorChart from "@/components/VisitorChart";
 import VoteButton from "@/components/VoteButton";
 import { api } from "@/lib/api";
-import { changePassword } from "@/lib/auth";
+import { changePassword, signOut } from "@/lib/auth";
 import { useMe } from "@/lib/me";
 import { isSuperadmin } from "@/lib/role";
 
@@ -41,6 +42,7 @@ const PAGE_SIZE = 5;
 
 export default function MyPage() {
   const { me, loading } = useMe();
+  const router = useRouter();
   const [votes, setVotes] = useState<VoteHistory | null>(null);
   const [bookmarks, setBookmarks] = useState<BookmarkData | null>(null);
   const [votesLoading, setVotesLoading] = useState(false);
@@ -63,6 +65,9 @@ export default function MyPage() {
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // 회원 탈퇴
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!me) return;
@@ -97,6 +102,24 @@ export default function MyPage() {
       setPwMsg({ ok: false, text: msg });
     } finally {
       setPwBusy(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (deleting) return;
+    const ok = window.confirm(
+      "정말 회원 탈퇴하시겠습니까?\n\n계정과 함께 내 투표·북마크·게시글 기록이 모두 영구 삭제되며 복구할 수 없습니다.",
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await api.deleteAccount();
+      await signOut();
+      alert("회원 탈퇴가 완료되었습니다. 이용해 주셔서 감사합니다.");
+      router.replace("/");
+    } catch (err: unknown) {
+      alert(`탈퇴에 실패했습니다: ${err instanceof Error ? err.message : String(err)}`);
+      setDeleting(false);
     }
   }
 
@@ -142,6 +165,14 @@ export default function MyPage() {
             className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-bold text-neutral-600 hover:border-brand hover:text-brand transition-colors"
           >
             비밀번호 변경
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDeleteAccount()}
+            disabled={deleting}
+            className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-bold text-neutral-500 hover:border-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+          >
+            {deleting ? "탈퇴 처리 중…" : "회원 탈퇴"}
           </button>
         </div>
 

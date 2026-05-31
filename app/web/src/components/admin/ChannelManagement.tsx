@@ -9,7 +9,7 @@ const PAGE_SIZE = 5;
 
 /** superadmin 전용 — 채널 관리.
  * - 채널 타입 / YouTube URL / 썸네일 URL 직접 편집
- * - 🔄 자동 가져오기 — wiki_url 페이지의 og:image 를 thumbnail_url 로 저장
+ * - 🔄 자동 가져오기 — wiki_url(YouTube 채널)을 공식 API 로 풀어 채널 썸네일을 thumbnail_url 로 저장
  */
 export default function ChannelManagement({
   onChanged,
@@ -58,7 +58,7 @@ export default function ChannelManagement({
 
   async function autoFetch(id: number) {
     setBusyId(id);
-    setMsg("og:image 조회 중…");
+    setMsg("채널 썸네일 조회 중…");
     try {
       const r = await api.fetchChannelThumbnail(id);
       setMsg(`✅ 자동 가져오기 성공: ${r.thumbnail_url}`);

@@ -16,8 +16,8 @@ type Props = Omit<VoteBody, "value"> & {
   size?: "sm" | "md";
 };
 
-/** 좋아요/싫어요 토글 — 같은 버튼 다시 누르면 취소, 반대 버튼 누르면 갱신.
- *  segmented control 디자인 — 두 버튼이 하나로 묶여 보이고, 활성 상태는 브랜드 컬러로 채워짐.
+/** 좋아요 토글 — 누르면 좋아요, 다시 누르면 취소.
+ *  (싫어요는 UI 에서 제거됨. dislikes 는 백엔드 호환을 위해 prop/onChange 에만 남기고 표시하지 않음.)
  */
 export default function VoteButton({
   target_type,
@@ -29,6 +29,7 @@ export default function VoteButton({
   size = "md",
 }: Props) {
   const [likes, setLikes] = useState(initialLikes);
+  // dislikes 는 표시하지 않지만, 과거 싫어요(-1)를 좋아요로 전환할 때 카운트 보정 + onChange 호환을 위해 유지.
   const [dislikes, setDislikes] = useState(initialDislikes);
   const [myVote, setMyVote] = useState<1 | -1 | null>(initialMyVote);
   const [busy, setBusy] = useState(false);
@@ -38,7 +39,7 @@ export default function VoteButton({
   useEffect(() => { setLikes(initialLikes); }, [initialLikes]);
   useEffect(() => { setDislikes(initialDislikes); }, [initialDislikes]);
 
-  async function handleClick(clicked: 1 | -1) {
+  async function handleLike() {
     if (busy) return;
     setBusy(true);
     try {
@@ -49,23 +50,19 @@ export default function VoteButton({
 
       let nextLikes = likes;
       let nextDislikes = dislikes;
-      let nextMyVote: 1 | -1 | null = myVote;
+      let nextMyVote: 1 | -1 | null;
 
-      if (myVote === clicked) {
+      if (myVote === 1) {
+        // 좋아요 취소
         await api.unvote(target_type, target_id);
-        if (clicked === 1) nextLikes = Math.max(0, likes - 1);
-        else                nextDislikes = Math.max(0, dislikes - 1);
+        nextLikes = Math.max(0, likes - 1);
         nextMyVote = null;
       } else {
-        await api.vote({ target_type, target_id, value: clicked });
-        if (myVote === null) {
-          if (clicked === 1) nextLikes = likes + 1;
-          else                nextDislikes = dislikes + 1;
-        } else {
-          if (clicked === 1) { nextLikes = likes + 1; nextDislikes = Math.max(0, dislikes - 1); }
-          else               { nextDislikes = dislikes + 1; nextLikes = Math.max(0, likes - 1); }
-        }
-        nextMyVote = clicked;
+        // 좋아요 — 이전에 싫어요였다면 그 카운트 보정
+        await api.vote({ target_type, target_id, value: 1 });
+        nextLikes = likes + 1;
+        if (myVote === -1) nextDislikes = Math.max(0, dislikes - 1);
+        nextMyVote = 1;
       }
 
       setLikes(nextLikes);
@@ -80,7 +77,6 @@ export default function VoteButton({
   }
 
   const likeActive = myVote === 1;
-  const dislikeActive = myVote === -1;
 
   const pad = size === "sm" ? "px-1.5 py-0.5" : "px-3 py-1.5";
   const iconSize = size === "sm" ? "h-3 w-3" : "h-4 w-4";
@@ -97,7 +93,7 @@ export default function VoteButton({
     >
       <button
         type="button"
-        onClick={() => void handleClick(1)}
+        onClick={() => void handleLike()}
         disabled={busy}
         aria-pressed={likeActive}
         aria-label="좋아요"
@@ -112,24 +108,6 @@ export default function VoteButton({
         <ThumbUpIcon className={iconSize} />
         <span className="tabular-nums font-bold">{likes}</span>
       </button>
-      <div className="w-px" style={{ background: "rgb(225 230 240)" }} />
-      <button
-        type="button"
-        onClick={() => void handleClick(-1)}
-        disabled={busy}
-        aria-pressed={dislikeActive}
-        aria-label="싫어요"
-        className={[
-          "flex items-center gap-1 transition-colors",
-          pad,
-          dislikeActive
-            ? "bg-neutral-800 text-white font-bold"
-            : "text-neutral-500 hover:bg-neutral-100",
-        ].join(" ")}
-      >
-        <ThumbDownIcon className={iconSize} />
-        <span className="tabular-nums font-bold">{dislikes}</span>
-      </button>
     </div>
   );
 }
@@ -138,14 +116,6 @@ function ThumbUpIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M2 21h4V9H2v12zm20-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L13.17 1 7.59 6.59C7.22 6.95 7 7.45 7 8v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-1z"/>
-    </svg>
-  );
-}
-
-function ThumbDownIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v1.91l.01.01L1 14c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/>
     </svg>
   );
 }

@@ -21,7 +21,10 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "ko_KR",
-    url: SITE_URL,
+    // og:url 은 의도적으로 비움 — 정적으로 루트를 박으면 카카오 공유 시 쿼리스트링이 붙은
+    // 실제 공유 URL 대신 og:url(루트)로 열려 필터 파라미터가 사라진다. 페이지가 모두
+    // client component 라 per-page 메타를 못 넣으므로, og:url 을 생략해 카카오가
+    // sendDefault 의 link.webUrl(현재 URL+파라미터)을 그대로 쓰게 한다.
     siteName: "백안맛지도",
     title: "백안맛지도 — 전국 맛집 지도",
     description: "TV·유튜브에 소개된 전국 맛집을 가장 가독성 좋게 보는 지도",

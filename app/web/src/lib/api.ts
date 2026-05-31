@@ -154,6 +154,8 @@ export const api = {
 
   // auth / me
   me: () => request<MeResponse | null>(`/auth/me`, undefined, true),
+  // 회원 탈퇴 — 본인 계정 영구 삭제 (votes·bookmarks·requests CASCADE 정리)
+  deleteAccount: () => request<{ ok: boolean }>(`/auth/me`, { method: "DELETE" }, true),
 
   // votes
   vote: (body: VoteBody) =>
@@ -255,6 +257,9 @@ export const api = {
   // admin — channel auto-ingest (SSE)
   ingestChannel: (handle: string, max_videos: number) =>
     streamSSE<IngestEvent>(`/admin/ingest-channel`, { handle, max_videos }),
+
+  // admin — YouTube 저장 데이터 동기화 (SSE) — 제목/썸네일 갱신 + 삭제 영상 정리
+  syncYoutube: () => streamSSE<YoutubeSyncEvent>(`/admin/sync-youtube`, {}),
 
   // requests (요청 게시판)
   listRequests: (params: { status?: string; type?: string } = {}) => {
@@ -534,4 +539,13 @@ export type IngestEvent =
   | { stage: "restaurant_skipped"; video_id: string; name: string; reason: string }
   | { stage: "video_done"; i: number; skip?: string }
   | { stage: "done"; summary: { videos: number; saved: number; skipped: number } }
+  | { stage: "error"; message: string };
+
+/** YouTube 동기화 SSE 이벤트 — backend youtube_sync.sync_stream 의 dict 그대로. */
+export type YoutubeSyncEvent =
+  | { stage: "start"; total: number }
+  | { stage: "updated"; appearance_id: number; video_id: string; fields: string[] }
+  | { stage: "removed"; appearance_id: number; video_id: string }
+  | { stage: "removed_restaurant"; restaurant_id: number }
+  | { stage: "done"; summary: { checked: number; updated: number; removed_appearances: number; removed_restaurants: number; dead_videos: number } }
   | { stage: "error"; message: string };

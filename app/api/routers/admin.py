@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from ..deps import require_admin, require_superadmin
 from ..services.ingest_channel import ingest_channel_stream
 from ..services.supabase_client import get_service_client
+from ..services.youtube_sync import sync_stream
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -42,6 +43,22 @@ def ingest_channel(body: IngestBody, user: dict = Depends(require_superadmin)) -
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",  # nginx 류 프록시에서 버퍼링 방지
+    })
+
+
+# ─── YouTube 데이터 동기화 (superadmin) ──────────────────────────────
+# 저장한 영상 제목/썸네일 갱신 + 삭제된 영상 정리. YouTube API 약관(주기적 갱신·동기 삭제) 준수.
+# 25일 주기 cron(.github/workflows/youtube-sync.yml)으로 자동 실행 + 여기서 수동 실행.
+@router.post("/sync-youtube")
+def sync_youtube(_: dict = Depends(require_superadmin)) -> StreamingResponse:
+    """appearances 의 YouTube 영상을 공식 API 로 재조회 → 갱신/삭제. SSE 스트림."""
+    def event_stream():
+        for event in sync_stream():
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
     })
 
 

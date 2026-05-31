@@ -120,7 +120,7 @@ export default function RestaurantDetailPage() {
         </div>
         <p className="mt-1 text-sm font-bold text-neutral-500">{restaurant.current_address}</p>
         {restaurant.cuisine && <p className="text-xs text-neutral-400">{restaurant.cuisine}</p>}
-        {/* 식당 좋아요/싫어요는 하단 '식당 정보' 카드에서만 노출 — 페이지 상단은 제목만 */}
+        {/* 식당 좋아요는 하단 '식당 정보' 카드에서만 노출 — 페이지 상단은 제목만 */}
       </div>
 
       {/* YouTube 임베드 */}

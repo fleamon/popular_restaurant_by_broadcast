@@ -129,6 +129,14 @@ function LoginForm({ onForgot }: { onForgot: () => void }) {
           <span>구글로 로그인</span>
         </SocialBtn>
       </div>
+
+      <p className="text-center text-xs text-neutral-400">
+        소셜 로그인으로 계속 진행 시{" "}
+        <a href="/terms" target="_blank" rel="noreferrer" className="text-brand underline-offset-2 hover:underline">이용약관</a>
+        {" "}및{" "}
+        <a href="/privacy" target="_blank" rel="noreferrer" className="text-brand underline-offset-2 hover:underline">개인정보처리방침</a>
+        에 동의하는 것으로 간주됩니다.
+      </p>
     </div>
   );
 }
@@ -143,6 +151,7 @@ function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [agreed, setAgreed] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -159,6 +168,10 @@ function SignupForm() {
     }
     if (password.length < 6) {
       setErr("비밀번호는 6자 이상이어야 합니다.");
+      return;
+    }
+    if (!agreed) {
+      setErr("이용약관 및 개인정보처리방침에 동의해주세요.");
       return;
     }
 
@@ -203,12 +216,27 @@ function SignupForm() {
         />
       </Field>
 
+      <label className="flex items-start gap-2 pt-1 text-xs text-neutral-600">
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-brand"
+        />
+        <span>
+          <a href="/terms" target="_blank" rel="noreferrer" className="font-bold text-brand underline-offset-2 hover:underline">이용약관</a>
+          {" "}및{" "}
+          <a href="/privacy" target="_blank" rel="noreferrer" className="font-bold text-brand underline-offset-2 hover:underline">개인정보처리방침</a>
+          에 동의합니다. (필수)
+        </span>
+      </label>
+
       {err && <p className="text-sm text-red-500">{err}</p>}
       {done && <p className="text-sm text-brand">{done}</p>}
 
       <button
         type="submit"
-        disabled={busy}
+        disabled={busy || !agreed}
         className="w-full rounded-md bg-brand px-4 py-2.5 font-bold text-brand-fg hover:bg-brand-hover disabled:opacity-50"
       >
         {busy ? "처리 중…" : "회원가입"}

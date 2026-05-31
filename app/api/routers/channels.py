@@ -1,13 +1,11 @@
 """채널 조회 + 영상별 점수/트렌딩."""
 from __future__ import annotations
 
-import re
-
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_superadmin
+from ..services import youtube_api
 from ..services.supabase_client import exec_with_retry, fetch_all, get_anon_client, get_service_client
 
 router = APIRouter(prefix="/channels", tags=["channels"])
@@ -125,25 +123,14 @@ def update_channel(channel_id: int, body: ChannelUpdate) -> dict:
     return {"ok": True}
 
 
-# YouTube 채널 페이지의 og:image (= 채널 아바타) 추출용 정규식.
-# <meta property="og:image" content="...">  /  <meta content="..." property="og:image">  둘 다 처리.
-_OG_IMAGE_RX = re.compile(
-    r'<meta[^>]+(?:property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']'
-    r'|content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\'])',
-    re.IGNORECASE,
-)
-
-
-def _extract_og_image(html: str) -> str | None:
-    m = _OG_IMAGE_RX.search(html)
-    if not m:
-        return None
-    return m.group(1) or m.group(2)
-
-
 @router.post("/{channel_id}/fetch-thumbnail", dependencies=[Depends(require_superadmin)])
 def fetch_channel_thumbnail(channel_id: int) -> dict:
-    """채널의 wiki_url(YouTube 채널 URL 권장) 페이지에서 og:image 를 읽어 thumbnail_url 에 저장."""
+    """채널의 wiki_url(YouTube 채널 URL)을 YouTube Data API 로 풀어 공식 채널 썸네일을 저장.
+
+    과거에는 채널 페이지 HTML 의 og:image 를 스크래핑했으나 YouTube ToS(스크래핑 금지)
+    위반이라, 수집 파이프라인과 동일하게 공식 API(youtube_api.resolve_handle)로 대체.
+    YouTube 채널이 아닌 wiki_url(TV·블로그 등)에는 동작하지 않는다.
+    """
     sb = get_service_client()
     rows = sb.table("channels").select("id, wiki_url").eq("id", channel_id).execute().data or []
     if not rows:
@@ -152,18 +139,10 @@ def fetch_channel_thumbnail(channel_id: int) -> dict:
     if not url:
         raise HTTPException(status_code=400, detail="wiki_url 이 비어있습니다 (먼저 YouTube 채널 URL 을 저장하세요)")
     try:
-        # YouTube 가 한국어 페이지를 주도록 Accept-Language 지정. UA 가 없으면 간략 페이지 반환되어 og:image 가 빠짐.
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; baekanmatjido/1.0)",
-            "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
-        }
-        with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
-            resp = client.get(url)
-            resp.raise_for_status()
-            img = _extract_og_image(resp.text)
+        meta = youtube_api.resolve_handle(url)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"fetch failed: {e}") from e
-    if not img:
-        raise HTTPException(status_code=422, detail="og:image 를 페이지에서 찾지 못했습니다")
-    sb.table("channels").update({"thumbnail_url": img}).eq("id", channel_id).execute()
-    return {"thumbnail_url": img}
+        raise HTTPException(status_code=502, detail=f"YouTube API 조회 실패: {e}") from e
+    if not meta.thumbnail_url:
+        raise HTTPException(status_code=422, detail="채널 썸네일을 찾지 못했습니다")
+    sb.table("channels").update({"thumbnail_url": meta.thumbnail_url}).eq("id", channel_id).execute()
+    return {"thumbnail_url": meta.thumbnail_url}

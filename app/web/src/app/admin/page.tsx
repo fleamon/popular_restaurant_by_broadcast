@@ -7,6 +7,7 @@ import ChannelManagement from "@/components/admin/ChannelManagement";
 import RestaurantManagement from "@/components/admin/RestaurantManagement";
 import RestaurantRequestApproval from "@/components/admin/RestaurantRequestApproval";
 import UserManagement from "@/components/admin/UserManagement";
+import YoutubeSync from "@/components/admin/YoutubeSync";
 import { useMe } from "@/lib/me";
 import { isAdmin, isSuperadmin } from "@/lib/role";
 
@@ -36,6 +37,7 @@ export default function AdminPage() {
       <h1 className="font-soft text-3xl font-bold tracking-tight" style={{ color: "rgb(20 30 80)" }}>DB 관리</h1>
 
       {isSuperadmin(me) && <ChannelIngest     onChanged={bumpChannels} />}
+      {isSuperadmin(me) && <YoutubeSync       onChanged={bumpChannels} />}
       {isSuperadmin(me) && <UserManagement    onChannelsChanged={bumpChannels} />}
       {isSuperadmin(me) && <RestaurantRequestApproval onChanged={bumpChannels} />}
       {isSuperadmin(me) && <ChannelManagement onChanged={bumpChannels} channelsRevision={channelsRevision} />}

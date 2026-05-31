@@ -78,7 +78,7 @@ export default function VotePage() {
       <PageHeader title="투표 · 랭킹" />
 
       <div className="rounded-xl border border-dashed border-brand bg-brand-surface p-3 text-sm font-bold text-brand">
-        ℹ 한 아이디는 하루에 맛집·채널·영상 각 1회씩 좋아요/싫어요 투표할 수 있습니다.
+        ℹ 한 아이디는 하루에 한 번 맛집·채널·영상 각 1회씩 좋아요 투표할 수 있습니다.
       </div>
 
       <TrendingSection rows={trending} />

@@ -21,7 +21,7 @@ const FEATURES: { title: string; desc: string }[] = [
   },
   {
     title: "맛집 / 채널 / 영상 투표",
-    desc: "한 아이디는 하루에 맛집·채널·영상 각 1회씩 좋아요/싫어요 가능. 투표 탭에서 세 가지 랭킹·인기 급상승 영상·기간별 비교합니다.",
+    desc: "한 아이디는 하루에 한 번 맛집·채널·영상 각 1회씩 좋아요 가능. 투표 탭에서 세 가지 랭킹·인기 급상승 영상·기간별 비교합니다.",
   },
   {
     title: "공유 가능한 검색 결과",
@@ -33,7 +33,7 @@ const FEATURES: { title: string; desc: string }[] = [
   },
   {
     title: "마이페이지",
-    desc: "로그인 후 내가 투표한 맛집·채널·영상 내역과 좋아요/싫어요 집계를 확인합니다. 북마크 기능으로 관심 있는 맛집·채널·영상을 저장하고 한눈에 모아볼 수 있습니다.",
+    desc: "로그인 후 내가 투표한 맛집·채널·영상 내역과 좋아요 집계를 확인합니다. 북마크 기능으로 관심 있는 맛집·채널·영상을 저장하고 한눈에 모아볼 수 있습니다.",
   },
 ];
 
@@ -46,7 +46,7 @@ export default function AboutPage() {
           <>
             TV · YouTube · 블로그에 소개된{" "}
             <Link href="/" className="text-brand underline-offset-2 hover:underline">전국 맛집</Link> 을
-            지도 한 장으로 훑어보고, 좋아요/싫어요로 랭킹을 만드는 프로젝트 입니다.
+            지도 한 장으로 훑어보고, 좋아요로 랭킹을 만드는 프로젝트 입니다.
             <br></br>{" "}<strong>사용자와 함께 만들어가요</strong> — 채널 추가·버그 제보·아이디어는{" "}
             <Link href="/request" className="text-brand underline-offset-2 hover:underline">요청 탭</Link> 으로 보내주세요.
           </>
