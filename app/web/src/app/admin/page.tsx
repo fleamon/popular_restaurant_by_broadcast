@@ -7,7 +7,6 @@ import ChannelManagement from "@/components/admin/ChannelManagement";
 import RestaurantManagement from "@/components/admin/RestaurantManagement";
 import RestaurantRequestApproval from "@/components/admin/RestaurantRequestApproval";
 import UserManagement from "@/components/admin/UserManagement";
-import VisitorChart from "@/components/admin/VisitorChart";
 import { useMe } from "@/lib/me";
 import { isAdmin, isSuperadmin } from "@/lib/role";
 
@@ -36,11 +35,10 @@ export default function AdminPage() {
     <div className="space-y-8">
       <h1 className="font-soft text-3xl font-bold tracking-tight" style={{ color: "rgb(20 30 80)" }}>DB 관리</h1>
 
-      {isSuperadmin(me) && <VisitorChart />}
-      {isSuperadmin(me) && <UserManagement    onChannelsChanged={bumpChannels} />}
-      {isSuperadmin(me) && <ChannelManagement onChanged={bumpChannels} channelsRevision={channelsRevision} />}
       {isSuperadmin(me) && <ChannelIngest     onChanged={bumpChannels} />}
+      {isSuperadmin(me) && <UserManagement    onChannelsChanged={bumpChannels} />}
       {isSuperadmin(me) && <RestaurantRequestApproval onChanged={bumpChannels} />}
+      {isSuperadmin(me) && <ChannelManagement onChanged={bumpChannels} channelsRevision={channelsRevision} />}
       {me && <RestaurantManagement me={me} channelsRevision={channelsRevision} />}
     </div>
   );

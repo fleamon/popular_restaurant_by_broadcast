@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import Pagination from "@/components/Pagination";
+import VisitorChart from "@/components/VisitorChart";
 import VoteButton from "@/components/VoteButton";
 import { api } from "@/lib/api";
 import { changePassword } from "@/lib/auth";
 import { useMe } from "@/lib/me";
+import { isSuperadmin } from "@/lib/role";
 
 type VoteHistory = {
   restaurants: { id: number; name: string; address: string; likes: number; dislikes: number; my_likes: number; my_dislikes: number }[];
@@ -114,6 +116,9 @@ export default function MyPage() {
 
   return (
     <div className="min-w-0 space-y-6">
+      {/* 일별 방문자 추이 — superadmin 전용 (기존 /admin 에서 이동) */}
+      {isSuperadmin(me) && <VisitorChart />}
+
       {/* 프로필 헤더 */}
       <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-5">
         <div className="flex flex-wrap items-center gap-3">

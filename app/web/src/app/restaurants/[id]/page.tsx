@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import BookmarkButton from "@/components/BookmarkButton";
 import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
-import { api, type Appearance, type ExternalInfo, type Restaurant } from "@/lib/api";
+import { api, type Appearance, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
 import { absoluteUrl, siteShareUrl } from "@/lib/site";
 
@@ -19,7 +19,6 @@ export default function RestaurantDetailPage() {
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [apps, setApps] = useState<Appearance[]>([]);
-  const [ext, setExt] = useState<ExternalInfo | null>(null);
   const [isBookmarked, setIsBookmarked] = useState<boolean | undefined>(undefined);
   // 채널/영상 북마크 — undefined: 비로그인
   const [bmC, setBmC] = useState<Record<number, boolean> | undefined>(undefined);
@@ -32,7 +31,7 @@ export default function RestaurantDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    // 식당 + 영상 + 외부 정보 fetch
+    // 식당 + 영상 fetch
     api.getRestaurant(id)
       .then((r) => {
         setRestaurant(r);
@@ -69,9 +68,6 @@ export default function RestaurantDetailPage() {
         });
       })
       .catch(() => setApps([]));
-    api.externalInfo(id)
-      .then((e) => setExt(e))
-      .catch(() => setExt(null));
 
     // 내 투표 — 페이지 마운트 시 한 번 fetch. 비로그인은 401 → 무시.
     const mergeMy = (setter: typeof setVoteR) => (mv: Record<string, 1 | -1>) => {
@@ -166,10 +162,9 @@ export default function RestaurantDetailPage() {
 
       <ShareBar restaurant={restaurant} featured={featured} ytId={ytId} />
 
-      {/* 식당 정보 (네이버 플레이스) */}
+      {/* 식당 정보 — 우리 DB 정보 + 지도 링크아웃 */}
       <PlaceInfo
         restaurant={restaurant}
-        ext={ext}
         rState={rState}
         onChangeR={(next) => setVoteR((prev) => ({ ...prev, [restaurant.id]: next }))}
         isBookmarked={isBookmarked}
@@ -277,30 +272,24 @@ function ExtLink({ href, className, children }: { href: string; className?: stri
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// 식당 정보 패널 — 네이버 플레이스 summary 기반.
-//   - 카테고리·영업시간·도로명/지번·리뷰수
-//   - 사진 그리드 (최대 6장)
-//   - 네이버 메뉴/리뷰/홈 외부 링크
-// summary 호출 실패(ext.naver===null)시에도 우리 DB 기본 정보(주소·전화·메모)는 렌더.
+// 식당 정보 패널 — 우리 DB 정보(이름·주소·cuisine·메모)만 표시.
+//   네이버 플레이스 summary(카테고리·영업시간·리뷰·사진)는 비공식 스크래핑이라 제거.
+//   메뉴/리뷰는 네이버 공식 페이지로 '링크아웃'만 제공(restaurant.naver_place_id 보유 시).
 // ─────────────────────────────────────────────────────────────────────
 function PlaceInfo({
   restaurant,
-  ext,
   rState,
   onChangeR,
   isBookmarked,
   onBookmarkChange,
 }: {
   restaurant: Restaurant;
-  ext: ExternalInfo | null;
   rState: VoteState;
   onChangeR: (next: VoteState) => void;
   isBookmarked?: boolean;
   onBookmarkChange?: (id: number, bookmarked: boolean) => void;
 }) {
-  const naver = ext?.naver ?? null;
-  const placeId = ext?.place_id ?? null;
-  const images = (naver?.images?.images ?? []).slice(0, 6);
+  const placeId = restaurant.naver_place_id ?? null;
 
   return (
     <section className="space-y-4 rounded-xl border border-neutral-200 bg-white p-5">
@@ -332,72 +321,33 @@ function PlaceInfo({
         </div>
       </div>
 
-      {/* 메타 칩 한 줄 — 카테고리 / 영업시간 */}
-      <div className="flex flex-wrap gap-2 text-xs font-bold">
-        {naver?.category?.category && (
-          <span className="rounded-full bg-brand-surface px-3 py-1 text-brand">
-            #{naver.category.category}
-          </span>
-        )}
-        {restaurant.cuisine && (
+      {/* 메타 칩 — 음식 종류 (우리 DB) */}
+      {restaurant.cuisine && (
+        <div className="flex flex-wrap gap-2 text-xs font-bold">
           <span className="rounded-full bg-neutral-100 px-3 py-1 text-neutral-700">
             {restaurant.cuisine}
           </span>
-        )}
-        {naver?.businessHours?.description && (
-          <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
-            🕒 {naver.businessHours.description}
-          </span>
-        )}
-        {naver?.visitorReviews?.displayText && (
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
-            ⭐ {naver.visitorReviews.displayText}
-          </span>
-        )}
-        {typeof naver?.blogReviews?.total === "number" && naver.blogReviews.total > 0 && (
-          <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
-            ✍️ 블로그 리뷰 {naver.blogReviews.total.toLocaleString()}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 위치 */}
       <div>
         <h3 className="mb-1 text-sm font-bold text-neutral-800">위치</h3>
         <ul className="space-y-1 text-sm text-neutral-700">
-          {(naver?.address?.roadAddress || restaurant.current_address) && (
+          {restaurant.current_address && (
             <li>
-              <span className="mr-2 inline-block w-12 text-xs font-bold text-neutral-500">도로명</span>
-              {naver?.address?.roadAddress ?? restaurant.current_address}
+              <span className="mr-2 inline-block w-12 text-xs font-bold text-neutral-500">주소</span>
+              {restaurant.current_address}
             </li>
           )}
-          {naver?.address?.address && (
+          {restaurant.phone && (
             <li>
-              <span className="mr-2 inline-block w-12 text-xs font-bold text-neutral-500">지번</span>
-              {naver.address.address}
+              <span className="mr-2 inline-block w-12 text-xs font-bold text-neutral-500">전화</span>
+              {restaurant.phone}
             </li>
           )}
         </ul>
       </div>
-
-      {/* 사진 그리드 */}
-      {images.length > 0 && (
-        <div>
-          <h3 className="mb-2 text-sm font-bold text-neutral-800">사진</h3>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {images.map((img, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={i}
-                src={img.origin}
-                alt=""
-                loading="lazy"
-                className="aspect-square w-full rounded-lg object-cover ring-1 ring-neutral-200"
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* 메모 (있으면) */}
       {restaurant.notes && (
@@ -407,39 +357,29 @@ function PlaceInfo({
         </div>
       )}
 
-      {/* 외부 링크 — 메뉴/리뷰는 네이버 공식 페이지로 */}
-      {placeId ? (
-        <div className="flex flex-wrap gap-2 pt-1">
-          <a
-            href={`https://pcmap.place.naver.com/restaurant/${placeId}/menu/list`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-md bg-[#03C75A] px-3 py-2 text-sm font-bold text-white hover:opacity-90"
-          >
-            🍴 메뉴 보기 (네이버)
-          </a>
-          <a
-            href={`https://pcmap.place.naver.com/restaurant/${placeId}/review/visitor`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-md border border-[#03C75A] px-3 py-2 text-sm font-bold text-[#03C75A] hover:bg-emerald-50"
-          >
-            ⭐ 방문자 리뷰
-          </a>
-          <a
-            href={`https://pcmap.place.naver.com/restaurant/${placeId}/home`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-md border border-neutral-200 px-3 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
-          >
-            네이버 플레이스 전체 →
-          </a>
-        </div>
-      ) : (
-        <p className="text-xs text-neutral-400">
-          (네이버 플레이스 ID 가 없어 메뉴/리뷰 외부 링크는 표시되지 않습니다)
-        </p>
-      )}
+      {/* 외부 링크아웃 — 콘텐츠를 가져오지 않고 네이버/카카오 공식 페이지로 이동만. */}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <a
+          href={
+            placeId
+              ? `https://m.place.naver.com/restaurant/${placeId}/home`
+              : restaurant.naver_map_url ?? `https://map.naver.com/p/search/${encodeURIComponent(restaurant.current_name)}`
+          }
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-md bg-[#03C75A] px-3 py-2 text-sm font-bold text-white hover:opacity-90"
+        >
+          📍 네이버 지도에서 보기
+        </a>
+        <a
+          href={restaurant.kakao_map_url ?? `https://map.kakao.com/?q=${encodeURIComponent(restaurant.current_name)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-md bg-[#FEE500] px-3 py-2 text-sm font-bold text-black hover:opacity-90"
+        >
+          📍 카카오맵에서 보기
+        </a>
+      </div>
     </section>
   );
 }

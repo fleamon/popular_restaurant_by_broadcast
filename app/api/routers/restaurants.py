@@ -1,9 +1,6 @@
 """맛집 검색/조회 + 작성/수정 (admin/superadmin)."""
 from __future__ import annotations
 
-import re
-
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -494,50 +491,6 @@ def update_geo(restaurant_id: int, body: GeoUpdate, _: dict = Depends(require_su
     return {"ok": True}
 
 
-# ─── 네이버 외부 정보 (자세히보기 페이지용) ─────────────────────────
-_NAVER_PLACE_RX = re.compile(r"/place/(\d+)")
-
-
-def _resolve_naver_place_id(url: str) -> str | None:
-    """naver.me 단축링크 또는 map.naver.com 링크에서 place_id 추출.
-
-    map.naver.com/p/entry/place/11679997 같이 이미 풀 URL 인 경우 정규식으로 즉시 추출,
-    naver.me/xxx 단축링크면 1회 GET 후 redirect Location 헤더에서 추출.
-    """
-    if not url:
-        return None
-    m = _NAVER_PLACE_RX.search(url)
-    if m:
-        return m.group(1)
-    try:
-        with httpx.Client(timeout=5.0, follow_redirects=False) as client:
-            r = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            loc = r.headers.get("location") or ""
-            m = _NAVER_PLACE_RX.search(loc)
-            if m:
-                return m.group(1)
-    except Exception:
-        pass
-    return None
-
-
-def _fetch_naver_summary(place_id: str) -> dict | None:
-    """비공식 네이버 플레이스 summary API. 카테고리/주소/영업시간/이미지/리뷰수 반환."""
-    api_url = f"https://map.naver.com/p/api/place/summary/{place_id}"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://map.naver.com/",
-        "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
-    }
-    try:
-        with httpx.Client(timeout=8.0) as client:
-            r = client.get(api_url, headers=headers)
-            r.raise_for_status()
-            return (r.json() or {}).get("data", {}).get("placeDetail")
-    except Exception:
-        return None
-
-
 # ─────────────────────────────────────────────────────────────────────
 # 영상(appearance) 단위 수정/삭제 — admin 은 본인 charge_channel 영상에 대해 요청,
 # superadmin 은 즉시 적용. 한 화면에서 restaurant + appearance 둘 다 다룸.
@@ -771,23 +724,7 @@ def create_appearance_delete_request(
     return {"id": (res.data[0] if res.data else {}).get("id")}
 
 
-@router.get("/{restaurant_id}/external-info")
-def external_info(restaurant_id: int) -> dict:
-    """네이버 플레이스에서 카테고리/주소/영업시간/사진/리뷰수 가져오기.
-
-    naver_place_id 가 없으면 naver_map_url 풀어 추출하고 DB 에 캐싱.
-    네이버 호출 실패 시에도 200 + naver=null 로 반환(프런트가 우아하게 처리).
-    """
-    sb = get_service_client()
-    rows = sb.table("restaurants").select("id, naver_place_id, naver_map_url").eq("id", restaurant_id).execute().data or []
-    if not rows:
-        raise HTTPException(status_code=404, detail="restaurant not found")
-    r = rows[0]
-    pid = r.get("naver_place_id")
-    if not pid and r.get("naver_map_url"):
-        pid = _resolve_naver_place_id(r["naver_map_url"])
-        if pid:
-            sb.table("restaurants").update({"naver_place_id": pid}).eq("id", restaurant_id).execute()
-    if not pid:
-        return {"naver": None, "place_id": None}
-    return {"naver": _fetch_naver_summary(pid), "place_id": pid}
+# 네이버 플레이스 summary 스크래핑 엔드포인트(/external-info)는 제거됨.
+# 비공식 API·SSR 크롤링으로 리뷰/사진을 재현하던 부분이라 법적 리스크가 커서 삭제.
+# 식당 상세 페이지는 우리 DB 정보(주소·전화·메모·cuisine)만 표시하고,
+# 네이버/카카오는 '지도에서 보기' 링크아웃(restaurants.naver_place_id / naver_map_url)으로만 연결한다.

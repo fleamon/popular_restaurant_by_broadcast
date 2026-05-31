@@ -4,6 +4,16 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 import { getSupabaseBrowser } from "./supabase";
 
+/** 쿼리스트링 직렬화 — undefined/"" 값은 제외. 여러 엔드포인트에서 공용. */
+function qs(params: Record<string, string | number | undefined | null>): string {
+  const sp = new URLSearchParams(
+    Object.entries(params)
+      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => [k, String(v)]),
+  );
+  return sp.toString();
+}
+
 async function request<T>(path: string, init?: RequestInit, withAuth = false): Promise<T> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -73,29 +83,15 @@ async function* streamSSE<T>(path: string, body: unknown): AsyncGenerator<T> {
 
 export const api = {
   // restaurants
-  listRestaurants: (params: Record<string, string | number | undefined>) => {
-    const qs = new URLSearchParams(
-      Object.entries(params)
-        .filter(([, v]) => v !== undefined && v !== "")
-        .map(([k, v]) => [k, String(v)]),
-    );
-    return request<Restaurant[]>(`/restaurants?${qs}`);
-  },
-  countRestaurants: (params: Record<string, string | number | undefined>) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v !== undefined && v !== "") as [string, string][],
-    );
-    return request<{ count: number }>(`/restaurants/count?${qs}`);
-  },
+  listRestaurants: (params: Record<string, string | number | undefined>) =>
+    request<Restaurant[]>(`/restaurants?${qs(params)}`),
+  countRestaurants: (params: Record<string, string | number | undefined>) =>
+    request<{ count: number }>(`/restaurants/count?${qs(params)}`),
   topRestaurants: () => request<Restaurant[]>(`/restaurants/top`),
   getRestaurant: (id: number) => request<Restaurant | null>(`/restaurants/${id}`),
   listRegions: () => request<Region[]>(`/restaurants/regions`),
-  regionCenter: (params: { sido?: string; sigungu?: string; dong?: string }) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => !!v) as [string, string][],
-    );
-    return request<{ lat: number | null; lng: number | null }>(`/restaurants/region-center?${qs}`);
-  },
+  regionCenter: (params: { sido?: string; sigungu?: string; dong?: string }) =>
+    request<{ lat: number | null; lng: number | null }>(`/restaurants/region-center?${qs(params)}`),
   topAppearance: (rid: number) => request<Appearance | null>(`/restaurants/${rid}/top-appearance`),
   topAppearances: (rid: number) => request<Appearance[]>(`/restaurants/${rid}/top-appearances`),
   topAppearancesBatch: (ids: number[]) =>
@@ -103,7 +99,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ids }),
     }),
-  externalInfo: (rid: number) => request<ExternalInfo>(`/restaurants/${rid}/external-info`),
   createRestaurant: (body: unknown) =>
     request<{ id: number }>(`/restaurants`, { method: "POST", body: JSON.stringify(body) }, true),
   updateRestaurantGeo: (
@@ -235,25 +230,13 @@ export const api = {
       }[];
     }>(`/votes/my-history`, undefined, true),
 
-  // period ranking
-  restaurantRankingByPeriod: (from?: string, to?: string) => {
-    const qs = new URLSearchParams({ target_type: "restaurant" });
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
-    return request<RankingRow[]>(`/votes/ranking?${qs}`);
-  },
-  channelRankingByPeriod: (from?: string, to?: string) => {
-    const qs = new URLSearchParams({ target_type: "channel" });
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
-    return request<RankingRow[]>(`/votes/ranking?${qs}`);
-  },
-  appearanceRankingByPeriod: (from?: string, to?: string) => {
-    const qs = new URLSearchParams({ target_type: "appearance" });
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
-    return request<AppearanceScore[]>(`/votes/ranking?${qs}`);
-  },
+  // period ranking — target_type 만 다른 동일 엔드포인트. 반환 타입만 분기.
+  restaurantRankingByPeriod: (from?: string, to?: string) =>
+    request<RankingRow[]>(`/votes/ranking?${qs({ target_type: "restaurant", from, to })}`),
+  channelRankingByPeriod: (from?: string, to?: string) =>
+    request<RankingRow[]>(`/votes/ranking?${qs({ target_type: "channel", from, to })}`),
+  appearanceRankingByPeriod: (from?: string, to?: string) =>
+    request<AppearanceScore[]>(`/votes/ranking?${qs({ target_type: "appearance", from, to })}`),
 
   // visits — 좌측 하단 방문자 위젯
   trackVisit: (visitor_id: string) =>
@@ -275,10 +258,9 @@ export const api = {
 
   // requests (요청 게시판)
   listRequests: (params: { status?: string; type?: string } = {}) => {
-    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
-    const qstr = qs.toString();
-    return request<RequestSummary[]>(`/requests${qstr ? `?${qstr}` : ""}`, undefined, true);
+    const q = qs(params);
     // 로그인 안 해도 됨 — withAuth 가 토큰 없으면 헤더 안 붙임. is_mine 은 false 로 옴.
+    return request<RequestSummary[]>(`/requests${q ? `?${q}` : ""}`, undefined, true);
   },
   getRequest: (id: number) =>
     request<RequestDetail>(`/requests/${id}`, undefined, true),
@@ -391,19 +373,6 @@ export type AppearanceScore = {
 export type RankingRow = { id: number; name: string; likes: number; dislikes: number; net_score: number };
 
 export type Region = { sido: string; sigungu: string | null; dong: string | null };
-
-export type ExternalInfo = {
-  place_id: string | null;
-  naver: {
-    name?: string;
-    category?: { category?: string };
-    address?: { address?: string; roadAddress?: string };
-    businessHours?: { description?: string };
-    visitorReviews?: { displayText?: string };
-    blogReviews?: { total?: number };
-    images?: { images?: { origin: string }[] };
-  } | null;
-};
 
 export type VoteBody = {
   target_type: "restaurant" | "channel" | "appearance";

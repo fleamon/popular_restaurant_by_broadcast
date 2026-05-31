@@ -16,19 +16,26 @@ popular_restaurant_by_broadcast/
 │   ├── web/                # Next.js (Vercel 배포 대상)
 │   │   ├── public/         # 로고/아이콘 + 후원 QR (tome.jpeg) + ads.txt
 │   │   └── src/
-│   │       ├── app/        # App Router (page.tsx = 라우트)
-│   │       ├── components/ # Map, NavTabs, VoteButton, VotePeriodCompare, DonationSection, admin/* ...
-│   │       └── lib/        # api / supabase / me / role / geocode / kakao-share / auth
+│   │       ├── app/        # App Router (page.tsx = 라우트). / vote request about admin
+│   │       │               #   mypage privacy auth/* restaurants/[id] blocked + robots/sitemap/ads.txt
+│   │       ├── components/ # Header / Footer / NavTabs / Map / VoteButton / VoteLabel
+│   │       │               #   BookmarkButton / VisitorCounter / Pagination / RankingList
+│   │       │               #   RestaurantList / RestaurantGrid / ViewToggle / DonationSection / SocialLogos
+│   │       │               #   AdSlot·AdFitUnit·CoupangBanner (광고 scaffolding) · admin/* · request/* · ui/*
+│   │       └── lib/        # api / supabase / me / role / auth / geocode / kakao-share / site / visitor
 │   └── api/                # FastAPI (REST + SSE)
-│       ├── routers/        # restaurants / channels / requests / votes / admin / auth / users
-│       ├── services/       # supabase / kakao_geo / naver_match / youtube_api / openai_extract / ingest_channel
+│       ├── routers/        # restaurants / channels / votes / bookmarks / requests / visits / admin / auth / users
+│       ├── services/       # supabase_client / kakao_geo / naver_match / youtube_api / openai_extract / ingest_channel
+│       ├── models/         # schemas.py (Pydantic 요청/응답 모델)
 │       ├── deps.py         # 인증 의존성 (require_user / require_admin / require_superadmin)
 │       ├── utils.py        # 공용 유틸 (norm_channel — 채널명 공백제거 비교)
 │       ├── settings.py     # 시크릿 로더 (환경변수 우선 → config/secrets.json)
 │       └── main.py
 ├── database/
 │   ├── schema.sql          # 전체 스키마 (한 번에 실행 — 최신 상태)
-│   └── migrations/         # 0001 ~ 누적 마이그레이션 (운영 DB 증분 적용)
+│   ├── migrations/         # 0001 ~ 누적 마이그레이션 (운영 DB 증분 적용)
+│   ├── seed.sql            # 로컬 테스트용 더미 시드 (선택 — schema 적용 후 실행, 멱등)
+│   └── ERD.md              # 테이블 관계 다이어그램 (mermaid)
 ├── data/                   # 콘솔용 일회성/배치 스크립트
 │   ├── ingest_channels.py        # YouTube 채널 자동 수집 (CLI 진입점)
 │   ├── seed_channel_thumbnails.py
@@ -49,7 +56,9 @@ popular_restaurant_by_broadcast/
 | `/` | **검색 (홈)**. 채널 타입/채널명/시도/시군구/동/카테고리/이름 필터 + 지도·목록·격자 보기 + 카카오톡 공유. 지도 우하단 **현재 위치** 버튼으로 내 위치 기준 주변 맛집 탐색 |
 | `/vote` | 투표 규칙 안내 · 인기 급상승 영상 · 맛집/채널/영상 랭킹 · **기간별 투표 조회·비교** |
 | `/request` | 요청 게시판 — 채널 추가요청 / 관리자 요청 / 버그 / 기타 / 공지사항 |
+| `/mypage` | **내 페이지** (로그인 필요) — 좌측 내 투표 기록(맛집·채널·영상, 페이지네이션) / 우측 북마크 목록 |
 | `/about` | 사이트 소개 + 후원 (토스 QR 모달) — 검색·요청 탭으로 바로 가는 inline 링크 포함 |
+| `/privacy` | 개인정보처리방침 (광고 쿠키 사용 명시) |
 | `/admin` | **admin / superadmin** 전용. 회원·채널 관리, 좌표 보정, 채널 자동 수집, **맛집/영상 통합 관리** (입력·수정·삭제), **수정/삭제 요청 승인** (superadmin) |
 | `/auth/login` | 이메일+비밀번호 / 구글 로그인·회원가입 · 비밀번호 재설정 메일 |
 | `/auth/callback` | OAuth 콜백 (PKCE code 교환) |
@@ -75,6 +84,12 @@ popular_restaurant_by_broadcast/
 - DB 무결성: `votes` 테이블에 `vote_date date GENERATED` (KST) + `UNIQUE(user_id, target_type, target_id, vote_date)`.
 - 랭킹 정렬: `likes desc` → `dislikes asc` → `id desc`.
 - `/vote` 하단 **기간별 조회** — 대상(맛집·채널·영상) + 기간 지정 → 그 사이에 받은 좋아요/싫어요 합산. 누적 비교.
+
+## 🔖 북마크 · 방문자 위젯
+
+- **북마크**: 맛집·채널·영상 옆 북마크 아이콘으로 저장 (로그인 필요). `/mypage` 우측에서 한눈에 조회.
+- **내 투표 기록**: `/mypage` 좌측 — 내가 투표한 맛집·채널·영상 목록 (페이지네이션, 현재 누적 좋아요/싫어요 동반 표시).
+- **방문자 위젯**: 모든 페이지 좌측 하단 고정 — 오늘 / 누적 unique 방문자 수. **superadmin 로그인 시에만** 노출. 방문자 식별은 브라우저 로컬 `visitor_id` 기반 (KST 자정 기준 일별 집계). `/admin` 의 방문 추이 그래프(superadmin)로 일별 추세 확인.
 
 ## 🛠 맛집/영상 통합 관리 (`/admin`)
 
@@ -231,8 +246,8 @@ npm run dev
 
 1. 좌측 **SQL Editor** → New query
 2. `database/schema.sql` 전체 복사 → 붙여넣기 → **Run**
-3. 좌측 **Table Editor** 에서 `users`, `channels`, `restaurants`, `appearances`, `votes`, `requests` 테이블 확인
-4. 운영 중인 DB 는 새 파일만 차례로: `0006_daily_votes.sql` → `0007_request_restaurant_edit.sql` → `0008_reject_pending_restaurant_requests.sql`
+3. 좌측 **Table Editor** 에서 `users`, `channels`, `restaurants`, `appearances`, `votes`, `requests`, `visits`, `bookmarks` 테이블 확인
+4. 운영 중인 DB 는 새 파일만 차례로: `0006_daily_votes.sql` → `0007_request_restaurant_edit.sql` → `0008_reject_pending_restaurant_requests.sql` → `0009_visits.sql` → `0010_bookmarks.sql`
 
 ### 3단계. Auth Provider 설정
 
@@ -744,8 +759,8 @@ export default function CoupangBanner({ id }: { id: string }) {
 ## 🧪 검증
 
 ```bash
-# TypeScript 타입 + 미사용 변수 체크
-cd app/web && npx tsc --noEmit --noUnusedLocals --noUnusedParameters
+# TypeScript 타입체크 + 프로덕션 빌드 (CI 와 동일 경로 — .github/workflows/web-deploy.yml)
+cd app/web && npm run typecheck && npm run build
 
 # Python 문법 sanity
 python3 -c "import ast, glob; [ast.parse(open(f).read()) for f in glob.glob('app/api/**/*.py', recursive=True)]"
