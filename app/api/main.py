@@ -62,7 +62,9 @@ def redoc() -> HTMLResponse:
     )
 
 
-@app.get("/healthz")
+# GET + HEAD 둘 다 허용 — UptimeRobot 무료 플랜은 HEAD 요청만 보내므로.
+# (FastAPI 의 @app.get 은 순수 Starlette 과 달리 HEAD 를 자동 추가하지 않아 405 가 났음.)
+@app.api_route("/healthz", methods=["GET", "HEAD"])
 def healthz() -> dict:
     return {"ok": True}
 
