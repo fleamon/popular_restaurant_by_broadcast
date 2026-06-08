@@ -11,18 +11,48 @@ from supabase import Client, create_client
 from ..settings import get_settings
 
 
+def _force_http1(client: Client) -> Client:
+    """supabase 내부 postgrest httpx 세션을 HTTP/1.1 전용으로 교체.
+
+    postgrest-py 는 httpx 를 http2=True 로 만든다. 그런데 캐시된 클라이언트 1개를
+    gunicorn/uvicorn threadpool 의 여러 스레드가 동시에 쓰면 HTTP/2 스트림 상태머신이
+    깨져 `LocalProtocolError: Invalid input SEND_HEADERS` / httpcore `KeyError` 가 난다.
+    HTTP/1.1 은 요청마다 풀에서 별도 커넥션을 쓰므로 동시성에 안전하다.
+
+    내부 구조 의존이라 방어적으로 — 실패하면 원본(HTTP/2) 그대로 두고 재시도 로직에 맡긴다.
+    """
+    try:
+        pg = getattr(client, "postgrest", None)
+        sess = getattr(pg, "session", None)
+        if isinstance(sess, httpx.Client):
+            new = httpx.Client(
+                base_url=sess.base_url,
+                headers=sess.headers,
+                timeout=sess.timeout,
+                http2=False,
+            )
+            try:
+                sess.close()
+            except Exception:
+                pass
+            pg.session = new
+    except Exception:
+        pass
+    return client
+
+
 @lru_cache(maxsize=1)
 def get_anon_client() -> Client:
     """익명 키 — 읽기 전용 API 라우트에서 사용."""
     s = get_settings()
-    return create_client(s["supabase_url"], s["supabase_anon_key"])
+    return _force_http1(create_client(s["supabase_url"], s["supabase_anon_key"]))
 
 
 @lru_cache(maxsize=1)
 def get_service_client() -> Client:
     """service_role 키 — admin 라우트·서버 측 쓰기에서 RLS bypass."""
     s = get_settings()
-    return create_client(s["supabase_url"], s["supabase_service_role_key"])
+    return _force_http1(create_client(s["supabase_url"], s["supabase_service_role_key"]))
 
 
 def reset_clients() -> None:
@@ -31,9 +61,10 @@ def reset_clients() -> None:
     get_service_client.cache_clear()
 
 
-# Supabase 내부 httpx 가 HTTP/2 idle disconnection 으로 가끔 던지는 전송 예외들.
+# Supabase 내부 httpx 가 던지는 전송 예외들 — reset 후 재시도하면 대개 복구.
+# HTTP/2 를 끄면 대부분 사라지지만, 잔존 케이스(LocalProtocolError 등) 안전망으로 포함.
 _TRANSIENT_EXC = (
-    httpx.RemoteProtocolError,
+    httpx.ProtocolError,        # Remote/LocalProtocolError 공통 베이스 (HTTP/2 스트림 상태 깨짐 포함)
     httpx.ConnectError,
     httpx.ReadError,
     httpx.WriteError,
