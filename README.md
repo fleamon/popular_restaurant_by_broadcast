@@ -219,7 +219,7 @@ npm run dev
 | 환경 | cwd / Root | Start Command | 이유 |
 |---|---|---|---|
 | **로컬** | 프로젝트 루트 | `uvicorn app.api.main:app --reload` | `app/__init__.py` + `app/api/__init__.py` 가 모두 있어 `app.api` 가 패키지 경로로 풀림 |
-| **Render** | **루트 (Root Directory 비움)** | `uvicorn app.api.main:app --host 0.0.0.0 --port $PORT` | Root 를 `app/api` 로 잡으면 부모 패키지가 없어 `attempted relative import with no known parent package` 오류 |
+| **Render** | **루트 (Root Directory 비움)** | `gunicorn app.api.main:app -k uvicorn.workers.UvicornWorker -w 1 --max-requests 2000 --max-requests-jitter 200 --timeout 120 --bind 0.0.0.0:$PORT` | Root 를 `app/api` 로 잡으면 부모 패키지가 없어 `attempted relative import with no known parent package` 오류. gunicorn `--max-requests` 로 워커를 주기적으로 재시작해 누수 메모리 회수(512MB OOM 예방) |
 | **Vercel** | `app/web` | `next build` (자동) | Vercel 은 Next.js 만 서빙. `app/web` 을 Root 로 잡아야 monorepo 의 다른 폴더가 build 컨텍스트에 안 들어옴 |
 
 → 즉 **Vercel 만 Root = `app/web`** 이고, **Render 는 Root 를 비워둠**. 헷갈리지 마세요.
@@ -344,7 +344,8 @@ Vercel → Project Settings → **Environment Variables** (Production + Preview 
    - **Root Directory**: **비움** (또는 `.`)
    - **Runtime**: Python 3
    - **Build Command**: `pip install -r app/api/requirements.txt`
-   - **Start Command**: `uvicorn app.api.main:app --host 0.0.0.0 --port $PORT`
+   - **Start Command**: `gunicorn app.api.main:app -k uvicorn.workers.UvicornWorker -w 1 --max-requests 2000 --max-requests-jitter 200 --timeout 120 --bind 0.0.0.0:$PORT`
+     - `--max-requests 2000`: 워커가 2000요청마다 자동 재시작 → 슬금슬금 새는 메모리 회수(512MB OOM 예방). `-w 1` 은 Free(512MB)에 맞춘 단일 워커.
    - **Instance Type**: **Free**
 
    > Vercel 의 `app/web` 처럼 `app/api` 를 Root 로 잡으면 안 됩니다. `main.py` 가 `from .routers import ...` (relative import) 패턴이라 패키지 부모(`app.api`) 가 있어야 import 됩니다.

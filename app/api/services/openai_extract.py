@@ -7,10 +7,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 
 from openai import OpenAI
 
 from ..settings import get_settings
+
+
+@lru_cache(maxsize=1)
+def _get_client(api_key: str) -> OpenAI:
+    """OpenAI 클라이언트 1개 재사용 — 내부 httpx 커넥션 풀을 매 호출마다 새로 만들지 않도록.
+    (영상마다 새 OpenAI() 를 만들면 닫히지 않은 httpx 풀이 누적돼 메모리 누수 → OOM.)
+    """
+    return OpenAI(api_key=api_key)
 
 
 @dataclass(frozen=True)
@@ -50,7 +59,7 @@ def extract(title: str, description: str) -> list[ExtractedRestaurant]:
     api_key = cfg["openai_api_key"]
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY 가 설정되지 않음 (config/secrets.json → openai.api_key)")
-    client = OpenAI(api_key=api_key)
+    client = _get_client(api_key)
     model = cfg["openai_model"] or "gpt-4o-mini"
 
     user = f"제목: {title}\n\n설명:\n{description}"

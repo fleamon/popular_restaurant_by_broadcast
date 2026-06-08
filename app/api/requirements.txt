@@ -1,5 +1,6 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
+gunicorn>=21        # 운영 구동 — uvicorn 워커 + --max-requests 로 워커 주기 재활용(메모리 회수)
 pydantic>=2.6
 supabase>=2.8
 realtime>=2.0
