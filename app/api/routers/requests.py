@@ -225,8 +225,8 @@ def bulk_delete_requests(body: BulkDeleteBody, _: dict = Depends(require_superad
     if not body.ids:
         return {"ok": True, "deleted": 0}
     sb = get_service_client()
-    # IN 절 URL 길이 한계 회피 — 500개씩 청크
-    CHUNK = 500
+    # IN 절 URL 길이 한계 회피 — 100개씩 청크 (id 가 커지면 500 도 Cloudflare/Kong 한도 초과)
+    CHUNK = 100
     for i in range(0, len(body.ids), CHUNK):
         exec_with_retry(sb.table("requests").delete().in_("id", body.ids[i:i + CHUNK]))
     return {"ok": True, "deleted": len(body.ids)}

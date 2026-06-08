@@ -114,7 +114,7 @@ def list_restaurants(
         # 2) score 매핑 (chunk in_)
         ids = [r["id"] for r in index_rows]
         score_by_id: dict[int, dict] = {}
-        CHUNK = 500
+        CHUNK = 100  # id=in.(...) URL 길이 한도(Cloudflare/Kong) 회피 — 작게 유지
         for i in range(0, len(ids), CHUNK):
             sc = exec_with_retry(
                 sb.table("v_restaurant_score").select("restaurant_id, likes, dislikes, net_score")
@@ -206,7 +206,7 @@ def restaurants_count(
     # IN 절 URL 길이 한계 회피 — 500개씩 청크로 count 합산.
     # 청크 간 ID 가 서로 겹치지 않게 분할하므로 단순 합산이 정답과 일치.
     total = 0
-    CHUNK = 500
+    CHUNK = 100  # id=in.(...) URL 길이 한도(Cloudflare/Kong) 회피 — 작게 유지
     ids_list = list(allowed)
     for i in range(0, len(ids_list), CHUNK):
         res = exec_with_retry(base_q().in_("id", ids_list[i:i + CHUNK]))
@@ -303,8 +303,8 @@ def top_restaurants(
     if not scores:
         return []
     ids = [s["restaurant_id"] for s in scores]
-    # IN 절 URL 길이 한계 — 청크.
-    CHUNK = 500
+    # IN 절 URL 길이 한계 — 청크. (id 가 커지면 500 도 Cloudflare/Kong 한도 초과 → 100)
+    CHUNK = 100
     details: list[dict] = []
     for i in range(0, len(ids), CHUNK):
         details.extend(exec_with_retry(sb.table("restaurants").select("*").in_("id", ids[i:i + CHUNK])).data or [])

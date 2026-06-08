@@ -71,7 +71,9 @@ def appearance_ranking(
     ch_ids = list({r["channel_id"] for r in rows if r.get("channel_id") is not None})
     rest_ids = list({r["restaurant_id"] for r in rows if r.get("restaurant_id") is not None})
 
-    def _in_chunks(table: str, cols: str, ids: list[int], chunk: int = 500) -> list[dict]:
+    # chunk 100 — id 가 커질수록 `id=in.(...)` URL 이 길어져 Supabase 앞단(Cloudflare/Kong)
+    # 의 URI 길이 한도를 넘으면 400(HTML) 이 떨어진다. 500 → 100 으로 낮춰 URL 을 짧게 유지.
+    def _in_chunks(table: str, cols: str, ids: list[int], chunk: int = 100) -> list[dict]:
         out: list[dict] = []
         for i in range(0, len(ids), chunk):
             out.extend(exec_with_retry(sb.table(table).select(cols).in_("id", ids[i:i + chunk])).data or [])
