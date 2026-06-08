@@ -27,7 +27,12 @@ export default function VisitorCounter() {
     async function go() {
       try {
         if (!tracked) {
-          await api.trackVisit(vid);
+          // 랜딩 시점의 외부 유입원 — 브라우저에서 호스트만 추출해 전송(전체 URL/경로/쿼리는 서버로 보내지 않음).
+          let referer = "";
+          try {
+            referer = document.referrer ? new URL(document.referrer).hostname : "";
+          } catch { referer = ""; }
+          await api.trackVisit(vid, referer);
           try { window.sessionStorage.setItem(TRACK_MARK, "1"); } catch { /* ignore */ }
         }
         const s = await api.visitStats();

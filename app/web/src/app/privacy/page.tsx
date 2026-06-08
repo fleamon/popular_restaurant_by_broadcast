@@ -74,8 +74,9 @@ export default function PrivacyPage() {
             </li>
             <li>
               <strong className="text-neutral-800">방문 통계(익명)</strong>: 방문자 수 집계를 위해
-              브라우저 로컬스토리지에 <strong>임의의 익명 식별자</strong>를 저장합니다. 이름·IP·계정과
-              연결되지 않아 개인을 식별할 수 없으며, <strong>개인정보에 해당하지 않습니다.</strong>
+              브라우저 로컬스토리지에 <strong>임의의 익명 식별자</strong>를 저장하고, 유입 경로 분석을 위해
+              직전 페이지의 <strong>도메인(유입 출처)</strong>만 수집합니다(전체 주소·경로·검색어는 수집하지 않음).
+              이름·IP·계정과 연결되지 않아 개인을 식별할 수 없으며, <strong>개인정보에 해당하지 않습니다.</strong>
             </li>
             <li>
               <strong className="text-neutral-800">광고 쿠키</strong>: 광고 게재 목적으로 Google 등

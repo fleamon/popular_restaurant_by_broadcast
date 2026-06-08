@@ -241,8 +241,8 @@ export const api = {
     request<AppearanceScore[]>(`/votes/ranking?${qs({ target_type: "appearance", from, to })}`),
 
   // visits — 좌측 하단 방문자 위젯
-  trackVisit: (visitor_id: string) =>
-    request<{ ok: boolean }>(`/visits/track`, { method: "POST", body: JSON.stringify({ visitor_id }) }),
+  trackVisit: (visitor_id: string, referer?: string) =>
+    request<{ ok: boolean }>(`/visits/track`, { method: "POST", body: JSON.stringify({ visitor_id, referer }) }),
   visitStats: () =>
     request<{ today: number; total: number }>(`/visits/stats`),
   visitFirstDate: () =>
@@ -252,6 +252,12 @@ export const api = {
     if (start && end) { qs.set("start", start); qs.set("end", end); }
     else qs.set("days", String(days ?? 30));
     return request<{ date: string; count: number }[]>(`/visits/daily?${qs}`);
+  },
+  visitReferers: (days?: number, start?: string, end?: string) => {
+    const qs = new URLSearchParams();
+    if (start && end) { qs.set("start", start); qs.set("end", end); }
+    else qs.set("days", String(days ?? 30));
+    return request<{ referer: string; count: number }[]>(`/visits/referers?${qs}`);
   },
 
   // admin — channel auto-ingest (SSE)

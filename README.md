@@ -25,7 +25,7 @@ popular_restaurant_by_broadcast/
 │   │       └── lib/        # api / supabase / me / role / auth / geocode / kakao-share / site / visitor
 │   └── api/                # FastAPI (REST + SSE)
 │       ├── routers/        # restaurants / channels / votes / bookmarks / requests / visits / admin / auth / users
-│       ├── services/       # supabase_client / kakao_geo / naver_match / youtube_api / openai_extract / ingest_channel
+│       ├── services/       # supabase_client / kakao_geo / youtube_api / openai_extract / ingest_channel / youtube_sync
 │       ├── models/         # schemas.py (Pydantic 요청/응답 모델)
 │       ├── deps.py         # 인증 의존성 (require_user / require_admin / require_superadmin)
 │       ├── utils.py        # 공용 유틸 (norm_channel — 채널명 공백제거 비교)
@@ -35,10 +35,9 @@ popular_restaurant_by_broadcast/
 │   ├── schema.sql          # 전체 스키마 (한 번에 실행 — 최신 상태)
 │   ├── migrations/         # 0001 ~ 누적 마이그레이션 (운영 DB 증분 적용)
 │   └── ERD.md              # 테이블 관계 다이어그램 (mermaid)
-├── data/                   # 콘솔용 일회성/배치 스크립트
+├── data/                   # 콘솔용 일회성/배치 스크립트 (모두 공식 API만 사용)
 │   ├── ingest_channels.py        # YouTube 채널 자동 수집 (CLI 진입점)
-│   ├── seed_channel_thumbnails.py
-│   ├── seed_naver_places.py
+│   ├── sync_youtube.py           # YouTube 저장 데이터 갱신/삭제 동기화 (CLI 진입점, 25일 cron)
 │   └── utils/                    # get_config / get_logger
 ├── config/
 │   ├── secrets.example.json
@@ -55,15 +54,16 @@ popular_restaurant_by_broadcast/
 | `/` | **검색 (홈)**. 채널 타입/채널명/시도/시군구/동/카테고리/이름 필터 + 지도·목록·격자 보기 + 카카오톡 공유. 지도 우하단 **현재 위치** 버튼으로 내 위치 기준 주변 맛집 탐색 |
 | `/vote` | 투표 규칙 안내 · 인기 급상승 영상 · 맛집/채널/영상 랭킹 · **기간별 투표 조회·비교** |
 | `/request` | 요청 게시판 — 채널 추가요청 / 관리자 요청 / 버그 / 기타 / 공지사항 |
-| `/mypage` | **내 페이지** (로그인 필요) — 좌측 내 투표 기록(맛집·채널·영상, 페이지네이션) / 우측 북마크 목록 |
+| `/mypage` | **내 페이지** (로그인 필요) — 좌측 내 투표 기록(맛집·채널·영상, 페이지네이션) / 우측 북마크 목록. **회원 탈퇴** 버튼. superadmin 은 최상단에 **일별 방문자 추이 + 유입 출처(referer) 그래프** 노출 |
 | `/about` | 사이트 소개 + 후원 (토스 QR 모달) — 검색·요청 탭으로 바로 가는 inline 링크 포함 |
-| `/privacy` | 개인정보처리방침 (광고 쿠키 사용 명시) |
-| `/admin` | **admin / superadmin** 전용. 회원·채널 관리, 좌표 보정, 채널 자동 수집, **맛집/영상 통합 관리** (입력·수정·삭제), **수정/삭제 요청 승인** (superadmin) |
+| `/terms` | 이용약관 (콘텐츠 출처·면책·업소 정정 창구·금지행위·준거법) |
+| `/privacy` | 개인정보처리방침 (최소수집·국외이전/수탁자·보유기간·보호책임자·광고 쿠키 동의·유입 출처 고지) |
+| `/admin` | **admin / superadmin** 전용. 채널 자동 수집, **YouTube 동기화**(갱신/삭제), 회원·채널 관리, 좌표 보정, **맛집/영상 통합 관리**, **수정/삭제 요청 승인** (superadmin) |
 | `/auth/login` | 이메일+비밀번호 / 구글 로그인·회원가입 · 비밀번호 재설정 메일 |
 | `/auth/callback` | OAuth 콜백 (PKCE code 교환) |
 | `/auth/reset-password` | 비밀번호 재설정 (메일 링크에서 도달) |
 | `/blocked` | 차단 계정 안내 |
-| `/restaurants/[id]` | 맛집 상세 — YouTube 임베드, 네이버 plate 정보, 영상·채널·식당 투표, 네이버/다음 지도 바로가기 (URL 없어도 가게이름 검색 fallback) |
+| `/restaurants/[id]` | 맛집 상세 — YouTube 공식 임베드, 우리 DB 정보(주소·전화·cuisine·메모), 영상·채널·식당 좋아요, 네이버/카카오 지도 **링크아웃** (URL 없어도 가게이름 검색 fallback). ※ 네이버 플레이스 스크래핑은 법적 리스크로 제거 |
 
 ---
 
@@ -87,8 +87,9 @@ popular_restaurant_by_broadcast/
 ## 🔖 북마크 · 방문자 위젯
 
 - **북마크**: 맛집·채널·영상 옆 북마크 아이콘으로 저장 (로그인 필요). `/mypage` 우측에서 한눈에 조회.
-- **내 투표 기록**: `/mypage` 좌측 — 내가 투표한 맛집·채널·영상 목록 (페이지네이션, 현재 누적 좋아요/싫어요 동반 표시).
-- **방문자 위젯**: 모든 페이지 좌측 하단 고정 — 오늘 / 누적 unique 방문자 수. **superadmin 로그인 시에만** 노출. 방문자 식별은 브라우저 로컬 `visitor_id` 기반 (KST 자정 기준 일별 집계). `/admin` 의 방문 추이 그래프(superadmin)로 일별 추세 확인.
+- **내 투표 기록**: `/mypage` 좌측 — 내가 투표한 맛집·채널·영상 목록 (페이지네이션, 현재 누적 좋아요 동반 표시).
+- **방문자 위젯**: 모든 페이지 좌측 하단 고정 — 오늘 / 누적 unique 방문자 수. **superadmin 로그인 시에만** 노출. 방문자 식별은 브라우저 로컬 `visitor_id`(익명 난수 UUID) 기반 (KST 자정 기준 일별 집계, IP·계정 미연결).
+- **방문자 분석 그래프**: `/mypage` 최상단(superadmin) — 일별 방문 추이 꺾은선 + **유입 출처(referer) 막대**. 유입 출처는 브라우저에서 직전 페이지의 **도메인만** 추출해 전송하고(전체 URL·경로·검색어 미수집), 서버가 `네이버`/`Google`/`YouTube`/`직접`/`사이트 내` 등 라벨로 정규화해 저장.
 
 ## 🛠 맛집/영상 통합 관리 (`/admin`)
 
@@ -246,7 +247,7 @@ npm run dev
 1. 좌측 **SQL Editor** → New query
 2. `database/schema.sql` 전체 복사 → 붙여넣기 → **Run**
 3. 좌측 **Table Editor** 에서 `users`, `channels`, `restaurants`, `appearances`, `votes`, `requests`, `visits`, `bookmarks` 테이블 확인
-4. 운영 중인 DB 는 새 파일만 차례로: `0006_daily_votes.sql` → `0007_request_restaurant_edit.sql` → `0008_reject_pending_restaurant_requests.sql` → `0009_visits.sql` → `0010_bookmarks.sql`
+4. 운영 중인 DB 는 새 파일만 차례로: `0006_daily_votes.sql` → `0007_request_restaurant_edit.sql` → `0008_reject_pending_restaurant_requests.sql` → `0009_visits.sql` → `0010_bookmarks.sql` → `0011_visits_referer.sql`(방문 유입 출처 컬럼)
 
 ### 3단계. Auth Provider 설정
 
@@ -290,7 +291,7 @@ npm run dev
 ### 6단계. 초기 데이터 채우기
 
 `/admin` → **채널 자동 수집** 에 YouTube 채널 핸들 (`@sungsikyung` 등) 입력 → SSE 진행상황 → DB 저장.
-또는 콘솔: `python -m data.ingest_channels --handles "@sungsikyung,@bimirya" --max 100`
+또는 콘솔: `python -m data.ingest_channels @sungsikyung @bimirya --max-videos 100`
 
 좌표 비어있는 맛집은 `/admin` → **🌏 기존 좌표 일괄 보정** (superadmin only).
 
@@ -712,16 +713,29 @@ export default function CoupangBanner({ id }: { id: string }) {
 - 광고임을 명확히 라벨링 (광고 / Advertisement)
 - 개인정보처리방침에 광고 쿠키 사용 명시 — 한국 PIPA / 유럽 GDPR 대응
 
-## 5. 정책·법적 사항
+## 5. 정책·법적 사항 (법적 컴플라이언스)
 
-광고 도입과 함께 필요한 페이지/문구:
+> 변호사 자문이 아닌 운영 원칙 정리. 본 프로젝트는 법적 리스크에 보수적으로 대응한다.
 
-- **개인정보처리방침** (`/privacy`) — 광고 쿠키 사용 명시 (Google AdSense, Kakao AdFit)
-- **이용약관** (`/terms`)
-- **쿠키 동의 배너** — GDPR/한국 PIPA 대응. AdSense 의 [Funding Choices](https://fundingchoices.google.com) 사용 가능 (무료)
-- **광고 라벨링** — 쿠팡 파트너스는 명시 필수
+### 적용된 조치
 
-> 광고 시작 전 위 페이지를 만들어 푸터에 링크해두는 게 안전.
+| 영역 | 조치 | 위치 |
+|---|---|---|
+| **저작권/스크래핑** | 비공식 API·HTML 스크래핑 전면 제거. 외부 데이터는 **공식 API만**(YouTube Data API / Kakao Local / OpenAI). 네이버 플레이스는 **링크아웃**만. 영상은 **공식 임베드 플레이어**로만 재생, 원본 링크·채널 출처 표기 | `services/*`, `restaurants/[id]` |
+| **YouTube API 약관** | 저장 데이터(제목·썸네일) **주기 갱신 + 삭제 영상 동기 삭제**. 25일 주기 cron + admin 수동 실행 | `youtube_sync.py`, `youtube-sync.yml` |
+| **개인정보(PIPA)** | 최소수집(이메일·닉네임), **판매·공개 안 함**, 국외이전·수탁자(Supabase/Vercel/Google) 고지, 항목별 보유기간, 개인정보 보호책임자, **회원 탈퇴**(즉시 파기) | `/privacy`, `DELETE /auth/me` |
+| **방문 통계** | 익명 난수 `visitor_id`(IP·계정 미연결). 유입 출처는 **도메인만** 수집(전체 URL 미수집) → 개인정보 아님 | `visitor.ts`, `visits.py` |
+| **이용약관/UGC** | `/terms` — 콘텐츠 출처·면책, **업소 관계자 정정/삭제 창구**, 금지행위, 운영자 게시물 삭제권, 준거법 | `/terms` |
+| **투표** | 부정 평가 노출 최소화 — **좋아요만**(싫어요 UI 제거), 랭킹은 likes 집계. 약관에 "투표=주관적 의견" 면책 | `VoteButton.tsx` |
+| **가입 동의** | 이메일 가입 시 **약관·방침 동의 체크박스**(필수), 소셜 로그인은 동의 간주 고지 | `auth/login` |
+| **광고(AdSense)** | 방침에 쿠키·웹비콘·IP·식별자·DoubleClick·제3자 공급업체·**Google 파트너 데이터 링크**·맞춤형 광고 동의/거부(aboutads)·COPPA 명시. `ads.txt` 게재 | `/privacy`, `ads.txt` |
+
+### 콘솔/대시보드에서 별도 처리 필요 (코드 아님)
+
+- **EU 사용자 동의(CMP)** — AdSense → **개인정보 보호 및 메시지**에서 GDPR/CCPA 메시지 게시. 그러면 `adsbygoogle.js` 가 EEA/영국 방문자에게 동의 배너 자동 표시(별도 배너 구현 불필요). 무료 [Funding Choices](https://fundingchoices.google.com).
+- **운영자/사업자 정보** — 광고·제휴 수익 발생 시 정통망법 고지·사업자등록/통신판매업 신고 검토.
+- **상표** — "백안맛지도" KIPRIS 조회 권장.
+- **쿠팡 파트너스** — 수수료 고지 문구 필수(이미 적용, `about` `AdNotice`).
 
 ## 6. 그 외 (트래픽 늘었을 때)
 
@@ -739,10 +753,23 @@ export default function CoupangBanner({ id }: { id: string }) {
 ## 🔧 운영 후 주기적 관리
 
 - **Vercel** 은 main 브랜치 push 시 자동 재배포. PR 은 Preview 환경 자동 생성.
-- **Render Free** 는 main push 시 자동 재배포 (sleep 모드 유지).
+- **Render** 는 main push 시 자동 재배포. Start Command 는 `gunicorn ... --max-requests 2000`(워커 주기 재활용 → 512MB OOM 예방, [메모리 관리](#-메모리-관리-render-512mb) 참조).
+- **YouTube 동기화**: `.github/workflows/youtube-sync.yml` 이 **25일 주기**(매월 1·26일)로 저장 영상 갱신/삭제 자동 실행 — YouTube API 약관 준수. `/admin` 에서 수동 실행도 가능.
+- **채널 수집**: 대량 수집은 `.github/workflows/data-ingest.yml`(Actions → Run workflow, 핸들·영상수 입력)로 — 512MB 웹 인스턴스 부하 회피.
 - DB 스키마 변경: 새 마이그레이션 파일을 `database/migrations/000N_*.sql` 로 추가 → Supabase SQL Editor 에서 실행 → 코드 push.
 - 도메인 만료 알림: 등록자 계정의 auto-renew **반드시 ON**.
 - AdSense 정책 변동 주기적 확인 (특히 GDPR/IDFA 등 개인정보 관련).
+
+---
+
+## 🧠 메모리 관리 (Render 512MB)
+
+Render Free(512MB)에서 며칠 주기로 `Ran out of memory` 가 났던 원인과 대응:
+
+- **OpenAI 클라이언트 누수(주원인, 수정 완료)** — `openai_extract` 가 영상마다 새 `OpenAI()` 를 만들어 httpx 커넥션 풀이 누적됐다. `@lru_cache` 로 **1개 재사용**하도록 변경(supabase 클라이언트와 동일 패턴). 응답 데이터는 캐시하지 않으므로(매 호출 새 API 요청) staleness 문제 없음.
+- **워커 주기 재활용** — `gunicorn ... --max-requests 2000` 으로 2000요청마다 워커 자동 재시작 → 어느 라이브러리에서 새든 메모리 회수. SSE 스트림 호환 위해 `--timeout 120`.
+- **무거운 작업은 웹 밖으로** — 대량 채널 수집·YouTube 동기화는 **GitHub Actions**(`data-ingest.yml` / `youtube-sync.yml`)에서 실행해 512MB 웹 인스턴스 피크를 낮춘다. admin UI 수집은 소량만.
+- (확장 시) `fetch_all` 이 전체 테이블을 메모리 적재하는 랭킹/`managed` 엔드포인트는 데이터가 커지면 DB측 페이지네이션으로 전환 검토.
 
 ---
 
@@ -750,9 +777,8 @@ export default function CoupangBanner({ id }: { id: string }) {
 
 | 스크립트 | 설명 |
 |---|---|
-| `python -m data.ingest_channels --handles "@sungsikyung,@bimirya" --max 100` | YouTube 채널 자동 수집 |
-| `python -m data.seed_channel_thumbnails` | 채널 썸네일 일괄 보정 |
-| `python -m data.seed_naver_places --sleep 0.3` | 기존 식당의 naver_place_id 일괄 매칭 |
+| `python -m data.ingest_channels @sungsikyung @bimirya --max-videos 100` | YouTube 채널 자동 수집 |
+| `python -m data.sync_youtube` | YouTube 저장 데이터 갱신 + 삭제 영상 정리 (약관 준수 동기화) |
 
 ---
 

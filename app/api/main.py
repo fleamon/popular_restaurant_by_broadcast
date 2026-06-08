@@ -30,8 +30,10 @@ app.add_middleware(
         "https://www.xn--0z2byb.com",
         "https://xn--0z2byb.com",
     ],
-    # Vercel Preview deploy 도 허용 — regex 매칭. (`allow_origins` 의 "*.vercel.app" 는 글자그대로 비교돼 안 됨)
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    # Vercel Preview deploy + 로컬 dev(포트 가변) 허용 — regex 매칭.
+    # (`allow_origins` 의 "*.vercel.app" 는 글자그대로 비교돼 안 됨. localhost 는 3000 이 점유되면
+    #  Next 가 3001+ 로 떠서 포트가 바뀌므로 포트 무관하게 허용.)
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -83,7 +85,7 @@ _ALLOWED_ORIGINS = {
     "https://www.xn--0z2byb.com",
     "https://xn--0z2byb.com",
 }
-_VERCEL_PREVIEW_RE = re.compile(r"^https://.*\.vercel\.app$")
+_VERCEL_PREVIEW_RE = re.compile(r"^(https://.*\.vercel\.app|http://localhost:\d+)$")
 
 
 def _cors_headers_for(origin: str | None) -> dict[str, str]:

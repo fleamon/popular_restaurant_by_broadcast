@@ -35,6 +35,7 @@ export default function VisitorChart() {
   const [firstDate, setFirstDate] = useState("");
 
   const [data,    setData]    = useState<Row[]>([]);
+  const [referers, setReferers] = useState<{ referer: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 최초 방문 날짜 로드
@@ -58,6 +59,15 @@ export default function VisitorChart() {
       .then(setData)
       .catch(() => setData([]))
       .finally(() => setLoading(false));
+
+    // 유입 출처 — 같은 기간 기준
+    const refPromise =
+      activeDays !== null
+        ? api.visitReferers(activeDays)
+        : start && end
+          ? api.visitReferers(undefined, start, end)
+          : null;
+    if (refPromise) refPromise.then(setReferers).catch(() => setReferers([]));
   }, [activeDays, start, end]);
 
   // 프리셋 버튼 클릭
@@ -195,6 +205,43 @@ export default function VisitorChart() {
           max={max}
         />
       )}
+
+      {/* ── 유입 출처 (referer) ── */}
+      {!loading && referers.length > 0 && (
+        <ReferersBreakdown rows={referers} />
+      )}
+    </div>
+  );
+}
+
+// ─── 유입 출처 막대 목록 ───────────────────────────────────────────────────────
+function ReferersBreakdown({ rows }: { rows: { referer: string; count: number }[] }) {
+  const total = rows.reduce((s, r) => s + r.count, 0) || 1;
+  const top = rows.slice(0, 8);
+  return (
+    <div className="mt-4 border-t border-neutral-100 pt-3">
+      <div className="mb-2 text-xs font-bold text-neutral-500">유입 출처</div>
+      <ul className="space-y-1.5">
+        {top.map((r) => {
+          const pct = Math.round((r.count / total) * 100);
+          return (
+            <li key={r.referer} className="flex items-center gap-2 text-xs">
+              <span className="w-24 shrink-0 truncate font-bold text-neutral-700" title={r.referer}>
+                {r.referer}
+              </span>
+              <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-neutral-100">
+                <span
+                  className="absolute inset-y-0 left-0 rounded-full bg-brand"
+                  style={{ width: `${Math.max(pct, 2)}%` }}
+                />
+              </span>
+              <span className="w-16 shrink-0 text-right tabular-nums text-neutral-500">
+                {r.count.toLocaleString()} · {pct}%
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
