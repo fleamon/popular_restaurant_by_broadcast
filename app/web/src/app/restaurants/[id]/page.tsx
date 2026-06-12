@@ -121,6 +121,7 @@ export default function RestaurantDetailPage() {
         <p className="mt-1 text-sm font-bold text-neutral-500">{restaurant.current_address}</p>
         {restaurant.cuisine && <p className="text-xs text-neutral-400">{restaurant.cuisine}</p>}
         {/* 식당 좋아요는 하단 '식당 정보' 카드에서만 노출 — 페이지 상단은 제목만 */}
+        <RestaurantSummary restaurant={restaurant} apps={apps} />
       </div>
 
       {/* YouTube 임베드 */}
@@ -268,6 +269,32 @@ function ExtLink({ href, className, children }: { href: string; className?: stri
     >
       {children}
     </a>
+  );
+}
+
+// 데이터로 구성하는 한 줄 소개 — 각 맛집 페이지에 원문 텍스트를 더해 콘텐츠 가치를 높인다(SEO/AdSense).
+function RestaurantSummary({ restaurant, apps }: { restaurant: Restaurant; apps: Appearance[] }) {
+  const channels = Array.from(
+    new Set(apps.map((a) => a.channels?.name).filter((n): n is string => !!n)),
+  );
+  const n = apps.length;
+  if (n === 0 && channels.length === 0) return null;
+
+  const channelText =
+    channels.length === 0
+      ? "방송"
+      : channels.length <= 2
+        ? channels.join(", ")
+        : `${channels.slice(0, 2).join(", ")} 등 ${channels.length}개 채널`;
+  const cuisineText = restaurant.cuisine ? `${restaurant.cuisine} ` : "";
+
+  return (
+    <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+      <strong className="text-neutral-800">{restaurant.current_name}</strong>
+      {" "}은(는) {channelText}에 소개된 {cuisineText}맛집입니다.
+      {restaurant.current_address ? ` ${restaurant.current_address}에 위치하며,` : ""}
+      {n > 0 ? ` 아래에서 소개 영상 ${n}건과 지도 위치를 확인할 수 있습니다.` : " 아래에서 지도 위치를 확인할 수 있습니다."}
+    </p>
   );
 }
 

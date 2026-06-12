@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import HomeIntro from "@/components/HomeIntro";
 import Map from "@/components/Map";
 import Pagination from "@/components/Pagination";
 import RestaurantGrid from "@/components/RestaurantGrid";
@@ -580,6 +581,9 @@ export default function HomePage() {
           />
         </>
       )}
+
+      {/* 콘텐츠 섹션 — 서비스 소개·이용법·지역/카테고리 둘러보기·FAQ (SEO·AdSense 최소 콘텐츠) */}
+      <HomeIntro />
     </div>
   );
 }

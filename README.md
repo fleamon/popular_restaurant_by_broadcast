@@ -21,6 +21,7 @@ popular_restaurant_by_broadcast/
 │   │       ├── components/ # Header / Footer / NavTabs / Map / VoteButton / VoteLabel
 │   │       │               #   BookmarkButton / VisitorCounter / Pagination / RankingList
 │   │       │               #   RestaurantList / RestaurantGrid / ViewToggle / DonationSection / SocialLogos
+│   │       │               #   HomeIntro(홈 콘텐츠) / VisitorChart / AdSenseLoader(콘텐츠 페이지 한정 로드)
 │   │       │               #   AdSlot·AdFitUnit·CoupangBanner (광고 scaffolding) · admin/* · request/* · ui/*
 │   │       └── lib/        # api / supabase / me / role / auth / geocode / kakao-share / site / visitor
 │   └── api/                # FastAPI (REST + SSE)
@@ -712,6 +713,17 @@ export default function CoupangBanner({ id }: { id: string }) {
 - 클릭 유도 ("Click here!" 등) 금지
 - 광고임을 명확히 라벨링 (광고 / Advertisement)
 - 개인정보처리방침에 광고 쿠키 사용 명시 — 한국 PIPA / 유럽 GDPR 대응
+
+### AdSense 승인·콘텐츠 품질 대응
+
+> 거절 사유 "게시자 콘텐츠가 없는 화면에 광고 / 가치 낮은 콘텐츠"에 대한 조치.
+
+- **광고 로더를 콘텐츠 페이지에서만 로드** — `AdSenseLoader` (`usePathname`) 가 `/admin` `/auth/*` `/mypage` `/blocked` 에서는 `adsbygoogle.js` 를 렌더하지 않는다. (콘텐츠 없는 화면의 광고 금지)
+- **유틸리티 화면 색인 제외** — `robots.ts` 에 위 경로 `disallow`, 각 폴더 `layout.tsx` 에 `robots: { index:false }`. thin 페이지가 색인돼 '저가치'로 평가되는 것 방지.
+- **콘텐츠 보강**:
+  - 홈(`/`) 하단 `HomeIntro` (슬림) — 한 줄 소개 + 지역/카테고리 빠른 필터 칩(내부 링크). '지도 한 장' 컨셉 유지 위해 STEP·FAQ 는 제외.
+  - 맛집 상세 — `RestaurantSummary` 가 채널·카테고리·위치로 한 줄 소개를 생성해 각 페이지에 원문 텍스트를 더함. YouTube 는 공식 임베드 + 원본 링크.
+- 재검토 요청 전 체크: 충분한 맛집 데이터(상세 페이지 다수)·고유 콘텐츠·정상 동작 페이지. 준비 중/빈 페이지 없도록.
 
 ## 5. 정책·법적 사항 (법적 컴플라이언스)
 

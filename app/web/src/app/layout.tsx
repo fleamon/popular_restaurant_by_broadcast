@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
 import { Suspense } from "react";
 
+import AdSenseLoader from "@/components/AdSenseLoader";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import VisitorCounter from "@/components/VisitorCounter";
@@ -52,16 +52,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <body className="min-h-screen">
-        {/* AdSense loader — env 가 비어있으면 렌더되지 않음. afterInteractive 로 CLS 영향 최소화 */}
-        {AD_CLIENT && (
-          <Script
-            id="adsense-loader"
-            async
-            strategy="afterInteractive"
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${AD_CLIENT}`}
-            crossOrigin="anonymous"
-          />
-        )}
+        {/* AdSense loader — 콘텐츠 페이지에서만 로드(admin/login/mypage/blocked 제외). env 비면 미렌더. */}
+        <AdSenseLoader />
         <Header />
         {/* Suspense — useSearchParams 등 client hook 이 정적 prerender 시 Suspense boundary 를 요구 (Next 16). */}
         <main className="mx-auto max-w-6xl overflow-x-hidden px-4 py-3">
