@@ -13,7 +13,7 @@ import {
 import { geocode } from "@/lib/geocode";
 import { isSuperadmin } from "@/lib/role";
 
-import { Field, Input, extractYouTubeId } from "./_form";
+import { Field, Input, Textarea, extractYouTubeId } from "./_form";
 
 const CUISINES = ["", "한식", "양식", "일식", "중식", "분식", "카페", "베이커리", "디저트", "아시안", "패스트푸드"];
 
@@ -473,8 +473,12 @@ export default function RestaurantManagement({ me, channelsRevision }: { me: MeR
               <Field label="영상 제목">
                 <Input value={form.episode_title} onChange={(v) => update("episode_title", v)} />
               </Field>
-              <Field label="메모">
-                <Input value={form.notes} onChange={(v) => update("notes", v)} />
+              <Field label="메모·소개">
+                <Textarea
+                  value={form.notes}
+                  onChange={(v) => update("notes", v)}
+                  placeholder="가게 소개·특징 등 (상세 페이지에 그대로 노출 — 고유 콘텐츠가 되어 SEO 에 도움)"
+                />
               </Field>
             </div>
 

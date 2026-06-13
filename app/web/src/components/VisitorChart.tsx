@@ -214,12 +214,43 @@ export default function VisitorChart() {
 }
 
 // ─── 유입 출처 막대 목록 ───────────────────────────────────────────────────────
+// 유입 출처 라벨 → 상위 그룹. 백엔드 _norm_referer 라벨과 맞춤.
+const REFERER_GROUP: Record<string, string> = {
+  Google: "검색", "네이버": "검색", "다음": "검색", Bing: "검색",
+  YouTube: "SNS·영상", Instagram: "SNS·영상", Facebook: "SNS·영상",
+  "카카오": "SNS·영상", "X(트위터)": "SNS·영상", Threads: "SNS·영상",
+  "직접": "직접", "사이트 내": "사이트 내",
+};
+const GROUP_ORDER = ["검색", "SNS·영상", "직접", "사이트 내", "기타", "(미상)"];
+
 function ReferersBreakdown({ rows }: { rows: { referer: string; count: number }[] }) {
   const total = rows.reduce((s, r) => s + r.count, 0) || 1;
   const top = rows.slice(0, 8);
+
+  // 그룹 집계
+  const groups = new Map<string, number>();
+  for (const r of rows) {
+    const g = r.referer === "(미상)" ? "(미상)" : (REFERER_GROUP[r.referer] ?? "기타");
+    groups.set(g, (groups.get(g) ?? 0) + r.count);
+  }
+  const grouped = GROUP_ORDER
+    .filter((g) => groups.has(g))
+    .map((g) => ({ group: g, count: groups.get(g) as number }));
+
   return (
     <div className="mt-4 border-t border-neutral-100 pt-3">
-      <div className="mb-2 text-xs font-bold text-neutral-500">유입 출처</div>
+      <div className="mb-2 text-xs font-bold text-neutral-500">유입 출처 — 그룹</div>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {grouped.map((g) => (
+          <span
+            key={g.group}
+            className="rounded-full bg-brand-surface px-2.5 py-1 text-[11px] font-bold text-brand tabular-nums"
+          >
+            {g.group} {Math.round((g.count / total) * 100)}% ({g.count.toLocaleString()})
+          </span>
+        ))}
+      </div>
+      <div className="mb-2 text-xs font-bold text-neutral-500">유입 출처 — 상세</div>
       <ul className="space-y-1.5">
         {top.map((r) => {
           const pct = Math.round((r.count / total) * 100);

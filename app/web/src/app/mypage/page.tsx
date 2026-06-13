@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import Pagination from "@/components/Pagination";
 import VisitorChart from "@/components/VisitorChart";
 import VoteButton from "@/components/VoteButton";
-import { api } from "@/lib/api";
+import { api, type VoteState } from "@/lib/api";
 import { changePassword, signOut } from "@/lib/auth";
 import { useMe } from "@/lib/me";
 import { isSuperadmin } from "@/lib/role";
@@ -36,7 +36,6 @@ type BookmarkData = {
 };
 
 type MyVotes = Record<string, 1 | -1>;
-type VoteState = { likes: number; dislikes: number; myVote: 1 | -1 | null };
 
 const PAGE_SIZE = 5;
 

@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import BookmarkButton from "@/components/BookmarkButton";
+import Map from "@/components/Map";
 import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
 import Link from "next/link";
 
-import { api, type Appearance, type RelatedRestaurant, type Restaurant } from "@/lib/api";
+import { api, type Appearance, type RelatedRestaurant, type Restaurant, type VoteState } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
 import { absoluteUrl, siteShareUrl } from "@/lib/site";
 
-type VoteState = { likes: number; dislikes: number; myVote: 1 | -1 | null };
 type VoteMap = Record<number, VoteState>;
 
 export default function RestaurantDetailPage() {
@@ -175,6 +175,20 @@ export default function RestaurantDetailPage() {
         isBookmarked={isBookmarked}
         onBookmarkChange={(_, bm) => setIsBookmarked(bm)}
       />
+
+      {/* 지도 — 좌표가 있을 때만. 단일 핀(기존 Map 재사용). */}
+      {restaurant.lat != null && restaurant.lng != null && (
+        <section>
+          <h2 className="font-soft mb-2 text-xl font-bold text-brand">지도</h2>
+          <div className="h-64 overflow-hidden rounded-xl border border-neutral-200">
+            <Map
+              restaurants={[restaurant]}
+              center={{ lat: restaurant.lat, lng: restaurant.lng }}
+              level={3}
+            />
+          </div>
+        </section>
+      )}
 
       {/* 영상 목록 (좋아요순) */}
       <section>

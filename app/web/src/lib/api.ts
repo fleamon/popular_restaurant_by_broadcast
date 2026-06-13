@@ -402,6 +402,9 @@ export type VoteBody = {
   value: 1 | -1;
 };
 
+// 투표 UI 로컬 상태 — likes 만 표시하지만 dislikes 는 백엔드 호환을 위해 유지(레거시).
+export type VoteState = { likes: number; dislikes: number; myVote: 1 | -1 | null };
+
 export type MeResponse = {
   sequence: number;
   email: string;

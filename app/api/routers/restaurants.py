@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..deps import require_admin, require_superadmin
-from ..services.supabase_client import exec_with_retry, fetch_all, get_anon_client, get_service_client
+from ..services.supabase_client import exec_with_retry, fetch_all, get_anon_client, get_service_client, in_chunks
 from ..utils import norm_channel as _norm_channel
 
 router = APIRouter(prefix="/restaurants", tags=["restaurants"])
@@ -303,11 +303,7 @@ def top_restaurants(
     if not scores:
         return []
     ids = [s["restaurant_id"] for s in scores]
-    # IN 절 URL 길이 한계 — 청크. (id 가 커지면 500 도 Cloudflare/Kong 한도 초과 → 100)
-    CHUNK = 100
-    details: list[dict] = []
-    for i in range(0, len(ids), CHUNK):
-        details.extend(exec_with_retry(sb.table("restaurants").select("*").in_("id", ids[i:i + CHUNK])).data or [])
+    details = in_chunks(sb, "restaurants", "*", "id", ids)
     by_id = {d["id"]: d for d in details}
     return [{**by_id[s["restaurant_id"]], **s} for s in scores if s["restaurant_id"] in by_id]
 

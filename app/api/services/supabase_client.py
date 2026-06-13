@@ -91,6 +91,19 @@ def fetch_all(builder: Any, page_size: int = 1000) -> list[dict]:
     return out
 
 
+def in_chunks(sb: Client, table: str, select: str, col: str, ids: list, chunk: int = 100) -> list[dict]:
+    """`col=in.(...)` 를 청크로 나눠 조회 — id 가 많거나 커지면 URL 이 Supabase 앞단
+    (Cloudflare/Kong) URI 길이 한도를 넘겨 400(HTML) 이 떨어지므로 작게(100) 분할.
+    channels/restaurants 등에 중복돼 있던 청크 로직을 통일.
+    """
+    out: list[dict] = []
+    for i in range(0, len(ids), chunk):
+        out.extend(
+            exec_with_retry(sb.table(table).select(select).in_(col, ids[i:i + chunk])).data or []
+        )
+    return out
+
+
 def exec_with_retry(builder: Any, retries: int = 3) -> Any:
     """Supabase 빌더의 .execute() 를 transient 전송 오류에 대해 자동 재시도.
 

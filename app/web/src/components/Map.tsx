@@ -11,10 +11,9 @@ import {
 import BookmarkButton from "@/components/BookmarkButton";
 import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
-import { api, type Appearance, type Restaurant } from "@/lib/api";
+import { api, type Appearance, type Restaurant, type VoteState } from "@/lib/api";
 
 type MyVotes = Record<string, 1 | -1>;
-type VoteState = { likes: number; dislikes: number; myVote: 1 | -1 | null };
 
 function extractYouTubeId(url: string | null | undefined): string | null {
   if (!url) return null;
