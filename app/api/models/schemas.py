@@ -17,4 +17,4 @@ VoteTarget = Literal["restaurant", "channel", "appearance"]
 class VoteRequest(BaseModel):
     target_type: VoteTarget
     target_id: int
-    value: Literal[1, -1] = Field(description="1=좋아요, -1=싫어요(레거시, UI 미노출)")
+    value: Literal[1] = Field(default=1, description="좋아요만(싫어요 제거됨)")

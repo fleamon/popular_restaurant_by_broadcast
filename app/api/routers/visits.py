@@ -91,25 +91,15 @@ def get_stats() -> dict:
     )
     today_count = today_res.count or 0
 
-    # 총 unique visitor 카운트 — distinct visitor_id.
-    # PostgREST 가 distinct count 를 직접 지원하지 않아 visitor_id 전체를 페이지 누적으로 받고 메모리에서 unique.
-    # 운영 초기엔 수 천~수 만 단위. 더 커지면 RPC/뷰로 분리 권장.
-    all_ids: set[str] = set()
-    start = 0
-    PAGE = 1000
-    while True:
-        chunk = exec_with_retry(
-            sb.table("visits").select("visitor_id").range(start, start + PAGE - 1)
-        ).data or []
-        for r in chunk:
-            vid = r.get("visitor_id")
-            if vid:
-                all_ids.add(vid)
-        if len(chunk) < PAGE:
-            break
-        start += PAGE
+    # 총 unique visitor 카운트 — DB 측 count(distinct) RPC (0012_visitors_count_rpc.sql).
+    # 과거엔 전체 visitor_id 를 앱 메모리 set 으로 받아 distinct → 데이터 폭증 시 OOM 위험이라 RPC 로 이전.
+    try:
+        res = exec_with_retry(sb.rpc("count_distinct_visitors"))
+        total = int(res.data) if res.data is not None else 0
+    except Exception:
+        total = 0
 
-    return {"today": today_count, "total": len(all_ids)}
+    return {"today": today_count, "total": total}
 
 
 @router.get("/first-date")

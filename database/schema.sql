@@ -202,7 +202,7 @@ create table public.votes (
   user_id     bigint not null references public.users(sequence) on delete cascade,
   target_type text not null check (target_type in ('restaurant','channel','appearance')),
   target_id   bigint not null,
-  value       smallint not null check (value in (1, -1)),
+  value       smallint not null check (value = 1),   -- 좋아요만(싫어요 제거). 뷰의 dislikes 는 항상 0.
   created_at  timestamptz not null default now(),
   -- KST(UTC+9) 기준 날짜. public.kst_date() 가 generated 식 IMMUTABLE 요구사항을 충족하는 wrapper.
   vote_date   date generated always as (public.kst_date(created_at)) stored
