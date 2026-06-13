@@ -6,7 +6,9 @@ import { useParams } from "next/navigation";
 import BookmarkButton from "@/components/BookmarkButton";
 import VoteButton from "@/components/VoteButton";
 import VoteLabel from "@/components/VoteLabel";
-import { api, type Appearance, type Restaurant } from "@/lib/api";
+import Link from "next/link";
+
+import { api, type Appearance, type RelatedRestaurant, type Restaurant } from "@/lib/api";
 import { shareKakaoTalk } from "@/lib/kakao-share";
 import { absoluteUrl, siteShareUrl } from "@/lib/site";
 
@@ -19,6 +21,7 @@ export default function RestaurantDetailPage() {
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [apps, setApps] = useState<Appearance[]>([]);
+  const [related, setRelated] = useState<RelatedRestaurant[]>([]);
   const [isBookmarked, setIsBookmarked] = useState<boolean | undefined>(undefined);
   // 채널/영상 북마크 — undefined: 비로그인
   const [bmC, setBmC] = useState<Record<number, boolean> | undefined>(undefined);
@@ -43,6 +46,7 @@ export default function RestaurantDetailPage() {
         }
       })
       .catch(() => setRestaurant(null));
+    api.relatedRestaurants(id).then(setRelated).catch(() => setRelated([]));
     api.topAppearances(id)
       .then((apps) => {
         setApps(apps);
@@ -255,6 +259,31 @@ export default function RestaurantDetailPage() {
           )}
         </ul>
       </section>
+
+      {/* 근처·연관 맛집 — 같은 지역/카테고리 다른 맛집 (내부 링크) */}
+      {related.length > 0 && (
+        <section>
+          <h2 className="font-soft mb-2 text-xl font-bold text-brand">
+            {restaurant.sigungu ? `${restaurant.sigungu} 근처 맛집` : "연관 맛집"}
+          </h2>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {related.map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/restaurants/${r.id}`}
+                  className="block rounded-lg border border-neutral-200 bg-white p-3 transition-colors hover:border-brand hover:bg-brand-surface"
+                >
+                  <div className="font-soft truncate text-sm font-bold" style={{ color: "rgb(20 30 80)" }}>
+                    {r.current_name}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-neutral-500">{r.current_address}</div>
+                  {r.cuisine && <div className="mt-0.5 text-[11px] text-neutral-400">{r.cuisine}</div>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

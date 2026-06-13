@@ -327,6 +327,33 @@ def get_restaurant(restaurant_id: int) -> dict | None:
     return {**row, "likes": s.get("likes", 0), "dislikes": s.get("dislikes", 0), "net_score": s.get("net_score", 0)}
 
 
+@router.get("/{restaurant_id}/related")
+def related_restaurants(restaurant_id: int, limit: int = Query(default=6, ge=1, le=20)) -> list[dict]:
+    """같은 시군구(우선) 또는 같은 카테고리의 다른 맛집 — 상세 페이지 '근처·연관 맛집'.
+    내부 링크로 탐색을 이어가게 해 체류시간·SEO 에 도움. 추가 데이터 없이 기존 컬럼만 사용.
+    """
+    sb = get_anon_client()
+    rows = exec_with_retry(
+        sb.table("restaurants").select("sido, sigungu, cuisine").eq("id", restaurant_id)
+    ).data or []
+    if not rows:
+        return []
+    base = rows[0]
+    q = (
+        sb.table("restaurants")
+          .select("id, current_name, current_address, cuisine, sigungu")
+          .neq("id", restaurant_id)
+          .eq("is_closed", False)
+    )
+    if base.get("sigungu"):
+        q = q.eq("sigungu", base["sigungu"])
+    elif base.get("cuisine"):
+        q = q.eq("cuisine", base["cuisine"])
+    else:
+        return []
+    return exec_with_retry(q.order("id", desc=True).limit(limit)).data or []
+
+
 class IdsBody(BaseModel):
     ids: list[int]
 

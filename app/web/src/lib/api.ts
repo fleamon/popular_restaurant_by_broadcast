@@ -89,6 +89,8 @@ export const api = {
     request<{ count: number }>(`/restaurants/count?${qs(params)}`),
   topRestaurants: () => request<Restaurant[]>(`/restaurants/top`),
   getRestaurant: (id: number) => request<Restaurant | null>(`/restaurants/${id}`),
+  relatedRestaurants: (id: number) =>
+    request<RelatedRestaurant[]>(`/restaurants/${id}/related`),
   listRegions: () => request<Region[]>(`/restaurants/regions`),
   regionCenter: (params: { sido?: string; sigungu?: string; dong?: string }) =>
     request<{ lat: number | null; lng: number | null }>(`/restaurants/region-center?${qs(params)}`),
@@ -326,6 +328,15 @@ export type Restaurant = {
   likes?: number;
   dislikes?: number;
   net_score?: number;
+};
+
+// 상세 페이지 '근처·연관 맛집' 목록 항목 (경량 — 백엔드 /restaurants/{id}/related)
+export type RelatedRestaurant = {
+  id: number;
+  current_name: string;
+  current_address: string;
+  cuisine?: string | null;
+  sigungu?: string | null;
 };
 
 export type Channel = {
