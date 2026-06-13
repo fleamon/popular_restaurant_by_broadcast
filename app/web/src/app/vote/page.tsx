@@ -8,6 +8,7 @@ import RankingList from "@/components/RankingList";
 import VoteButton from "@/components/VoteButton";
 import PageHeader from "@/components/ui/PageHeader";
 import { api, type AppearanceScore, type RankingRow } from "@/lib/api";
+import { daysAgoKst, todayKst } from "@/lib/kst";
 
 type MyVotes = Record<string, 1 | -1>;
 type PeriodPreset = "all" | "today" | "7d" | "30d" | "custom";
@@ -19,15 +20,6 @@ const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: "30d",    label: "30일" },
   { value: "custom", label: "직접" },
 ];
-
-function todayKst(): string {
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  return kst.toISOString().slice(0, 10);
-}
-function daysAgoKst(n: number): string {
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000 - n * 86400000);
-  return kst.toISOString().slice(0, 10);
-}
 
 export default function VotePage() {
   const [restaurants, setRestaurants] = useState<RankingRow[]>([]);

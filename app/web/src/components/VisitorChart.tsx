@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 
@@ -202,7 +202,6 @@ export default function VisitorChart() {
           yTicks={yTicks}
           xLabels={xLabels}
           step={step}
-          max={max}
         />
       )}
 
@@ -251,7 +250,7 @@ function ReferersBreakdown({ rows }: { rows: { referer: string; count: number }[
 type Pt = { x: number; y: number; date: string; count: number };
 
 function LineChart({
-  pts, areaPath, linePath, yTicks, xLabels, step, max,
+  pts, areaPath, linePath, yTicks, xLabels, step,
 }: {
   pts: Pt[];
   areaPath: string;
@@ -259,7 +258,6 @@ function LineChart({
   yTicks: { y: number; label: string }[];
   xLabels: Pt[];
   step: number;
-  max: number;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const hPt = hovered !== null ? pts[hovered] : null;

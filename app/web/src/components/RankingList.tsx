@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api, type RankingRow } from "@/lib/api";
+import { daysAgoKst, todayKst } from "@/lib/kst";
 import BookmarkButton from "./BookmarkButton";
 import Pagination from "./Pagination";
 import VoteButton from "./VoteButton";
@@ -27,15 +28,6 @@ const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: "30d",    label: "30일" },
   { value: "custom", label: "직접" },
 ];
-
-function todayKst(): string {
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  return kst.toISOString().slice(0, 10);
-}
-function daysAgoKst(n: number): string {
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000 - n * 86400000);
-  return kst.toISOString().slice(0, 10);
-}
 
 /** 좋아요 desc 정렬 + 이름 like 검색 + 10개씩 페이지네이션. 기간 필터 포함. */
 export default function RankingList({ title, rows: allTimeRows, targetType, myVotes, myBookmarks, onBookmarkChange }: Props) {
@@ -211,5 +203,3 @@ function RankBadge({ n }: { n: number }) {
     </span>
   );
 }
-
-export { default as Pagination } from "./Pagination";
