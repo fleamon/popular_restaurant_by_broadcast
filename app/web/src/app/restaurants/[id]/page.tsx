@@ -5,7 +5,7 @@ import type { Appearance, RelatedRestaurant, Restaurant } from "@/lib/api";
 import RestaurantDetailClient from "./RestaurantDetailClient";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.xn--0z2byb.com";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://xn--0z2byb.com";
 
 // 서버 fetch 헬퍼 — 실패해도 페이지가 죽지 않도록 null 로 흡수. 1시간 ISR 캐시.
 async function getJSON<T>(path: string): Promise<T | null> {

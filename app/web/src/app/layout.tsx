@@ -12,7 +12,7 @@ import "./globals.css";
 // 검수 통과 후: 페이지에 <AdSlot slot="..." /> 로 광고 단위 배치.
 const AD_CLIENT = process.env.NEXT_PUBLIC_ADSENSE_CLIENT ?? "";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.xn--0z2byb.com";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://xn--0z2byb.com";
 const SITE_IMAGE = `${SITE_URL}/white_eyes_blue.png`;
 
 export const metadata: Metadata = {

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://www.xn--0z2byb.com";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://xn--0z2byb.com";
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 // 1시간마다 재생성 — 새 맛집이 등록되면 sitemap 에 반영(크롤러 발견성).
