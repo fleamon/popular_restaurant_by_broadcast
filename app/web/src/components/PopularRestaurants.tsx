@@ -12,7 +12,12 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 //  좋아요 순 상위 N개. API 가 꺼져 있으면(콜드스타트 등) 조용히 숨김 → 홈은 항상 정상 렌더.
 async function fetchPopular(limit: number): Promise<Restaurant[]> {
   try {
-    const res = await fetch(`${BASE}/restaurants/top?limit=${limit}`, { next: { revalidate: 3600 } });
+    // 타임아웃 필수 — 빌드 시 Render API 가 콜드스타트/재배포 중이면 fetch 가 60s+ 멈춰 정적 생성이 실패한다.
+    // 10s 안에 응답 없으면 포기 → 빈 목록(섹션 숨김). 운영 ISR(1h) 이 다음 재생성 때 채운다.
+    const res = await fetch(`${BASE}/restaurants/top?limit=${limit}`, {
+      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) return [];
     const rows = (await res.json()) as Restaurant[];
     return Array.isArray(rows) ? rows : [];

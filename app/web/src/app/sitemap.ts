@@ -13,7 +13,12 @@ type SitemapRow = { id: number; updated_at?: string | null };
 // 백엔드 경량 엔드포인트에서 모든 맛집 id+갱신시각을 받아 동적으로 포함한다.
 async function fetchRestaurantEntries(): Promise<MetadataRoute.Sitemap> {
   try {
-    const res = await fetch(`${API}/restaurants/sitemap`, { next: { revalidate } });
+    // 타임아웃 — 빌드 시 API 가 콜드스타트/재배포 중이어도 sitemap 생성이 멈추지 않도록.
+    // 응답 없으면 정적 페이지 sitemap 만 반환, ISR(1h)이 다음 재생성 때 상세 URL 을 채운다.
+    const res = await fetch(`${API}/restaurants/sitemap`, {
+      next: { revalidate },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) return [];
     const rows = (await res.json()) as SitemapRow[];
     return rows.map((r) => ({
