@@ -308,6 +308,22 @@ def top_restaurants(
     return [{**by_id[s["restaurant_id"]], **s} for s in scores if s["restaurant_id"] in by_id]
 
 
+@router.get("/sitemap")
+def sitemap_entries() -> list[dict]:
+    """sitemap.xml 생성용 경량 목록 — 폐업하지 않은 모든 맛집의 (id, updated_at).
+
+    상세 페이지(/restaurants/{id})가 사이트 콘텐츠의 대부분인데 sitemap 에 없으면
+    검색엔진·AdSense 크롤러가 '6페이지짜리 빈약한 사이트' 로 인식한다(저가치 콘텐츠 거절 원인).
+    id·updated_at 두 컬럼만 누적하므로 수천 건이어도 메모리 부담이 작다.
+    """
+    sb = get_anon_client()
+    rows = fetch_all(
+        sb.table("restaurants").select("id, updated_at")
+          .eq("is_closed", False).order("id", desc=True)
+    )
+    return [{"id": r["id"], "updated_at": r.get("updated_at")} for r in rows]
+
+
 @router.get("/{restaurant_id}")
 def get_restaurant(restaurant_id: int) -> dict | None:
     """식당 1건 + likes/dislikes. 자세히보기 페이지 + 핀 모달의 식당 카운터 용."""

@@ -1,13 +1,42 @@
 import type { MetadataRoute } from "next";
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || "https://www.xn--0z2byb.com";
-  return [
-    { url: base,                  changeFrequency: "daily",   priority: 1.0 },
-    { url: `${base}/vote`,        changeFrequency: "daily",   priority: 0.9 },
-    { url: `${base}/request`,     changeFrequency: "weekly",  priority: 0.7 },
-    { url: `${base}/about`,       changeFrequency: "monthly", priority: 0.5 },
-    { url: `${base}/terms`,       changeFrequency: "monthly", priority: 0.3 },
-    { url: `${base}/privacy`,     changeFrequency: "monthly", priority: 0.3 },
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || "https://www.xn--0z2byb.com";
+const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+// 1시간마다 재생성 — 새 맛집이 등록되면 sitemap 에 반영(크롤러 발견성).
+export const revalidate = 3600;
+
+type SitemapRow = { id: number; updated_at?: string | null };
+
+// 맛집 상세 페이지(/restaurants/{id})가 사이트 콘텐츠의 대부분 —
+// 정적 6페이지만 sitemap 에 있으면 '빈약한 사이트' 로 평가된다(AdSense 저가치 거절 원인).
+// 백엔드 경량 엔드포인트에서 모든 맛집 id+갱신시각을 받아 동적으로 포함한다.
+async function fetchRestaurantEntries(): Promise<MetadataRoute.Sitemap> {
+  try {
+    const res = await fetch(`${API}/restaurants/sitemap`, { next: { revalidate } });
+    if (!res.ok) return [];
+    const rows = (await res.json()) as SitemapRow[];
+    return rows.map((r) => ({
+      url: `${SITE}/restaurants/${r.id}`,
+      lastModified: r.updated_at ? new Date(r.updated_at) : undefined,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    }));
+  } catch {
+    // API 다운/콜드스타트여도 정적 페이지 sitemap 은 항상 반환되도록.
+    return [];
+  }
+}
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const staticPages: MetadataRoute.Sitemap = [
+    { url: SITE,              changeFrequency: "daily",   priority: 1.0 },
+    { url: `${SITE}/vote`,    changeFrequency: "daily",   priority: 0.9 },
+    { url: `${SITE}/about`,   changeFrequency: "monthly", priority: 0.6 },
+    { url: `${SITE}/request`, changeFrequency: "weekly",  priority: 0.5 },
+    { url: `${SITE}/terms`,   changeFrequency: "monthly", priority: 0.3 },
+    { url: `${SITE}/privacy`, changeFrequency: "monthly", priority: 0.3 },
   ];
+  const restaurants = await fetchRestaurantEntries();
+  return [...staticPages, ...restaurants];
 }

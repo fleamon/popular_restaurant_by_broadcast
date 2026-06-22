@@ -15,63 +15,65 @@ import { absoluteUrl, siteShareUrl } from "@/lib/site";
 
 type VoteMap = Record<number, VoteState>;
 
-export default function RestaurantDetailClient() {
+// 서버(page.tsx)에서 미리 가져온 초기 데이터. 있으면 SSR HTML 에 본문이 채워지고
+// 사용자도 로딩 깜빡임 없이 즉시 본문을 본다. 없으면(직접 마운트 등) 클라에서 fetch.
+type Props = {
+  initialRestaurant?: Restaurant | null;
+  initialApps?: Appearance[];
+  initialRelated?: RelatedRestaurant[];
+};
+
+export default function RestaurantDetailClient({
+  initialRestaurant = null,
+  initialApps = [],
+  initialRelated = [],
+}: Props = {}) {
   const params = useParams<{ id: string }>();
   const id = Number(params?.id);
 
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const [apps, setApps] = useState<Appearance[]>([]);
-  const [related, setRelated] = useState<RelatedRestaurant[]>([]);
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(initialRestaurant);
+  const [apps, setApps] = useState<Appearance[]>(initialApps);
+  const [related, setRelated] = useState<RelatedRestaurant[]>(initialRelated);
   const [isBookmarked, setIsBookmarked] = useState<boolean | undefined>(undefined);
   // 채널/영상 북마크 — undefined: 비로그인
   const [bmC, setBmC] = useState<Record<number, boolean> | undefined>(undefined);
   const [bmA, setBmA] = useState<Record<number, boolean> | undefined>(undefined);
 
   // 투표 상태 — 식당/채널/영상 별로 (target_id → state). 같은 채널이 여러 영상에 등장해도 한 번 클릭 시 모두 동기화.
-  const [voteR, setVoteR] = useState<VoteMap>({});
-  const [voteC, setVoteC] = useState<VoteMap>({});
-  const [voteA, setVoteA] = useState<VoteMap>({});
+  // 서버에서 받은 초기 데이터로 즉시 seed → SSR HTML 의 좋아요 수가 정확하고 깜빡임 없음.
+  const [voteR, setVoteR] = useState<VoteMap>(() =>
+    initialRestaurant
+      ? { [initialRestaurant.id]: { likes: initialRestaurant.likes ?? 0, dislikes: initialRestaurant.dislikes ?? 0, myVote: null } }
+      : {},
+  );
+  const [voteC, setVoteC] = useState<VoteMap>(() => seedChannelVotes(initialApps));
+  const [voteA, setVoteA] = useState<VoteMap>(() => seedAppearanceVotes(initialApps));
 
   useEffect(() => {
     if (!id) return;
-    // 식당 + 영상 fetch
-    api.getRestaurant(id)
-      .then((r) => {
-        setRestaurant(r);
-        if (r) {
-          setVoteR((prev) => ({
-            ...prev,
-            [r.id]: { likes: r.likes ?? 0, dislikes: r.dislikes ?? 0, myVote: prev[r.id]?.myVote ?? null },
-          }));
-        }
-      })
-      .catch(() => setRestaurant(null));
-    api.relatedRestaurants(id).then(setRelated).catch(() => setRelated([]));
-    api.topAppearances(id)
-      .then((apps) => {
-        setApps(apps);
-        // 영상/채널 score 를 vote state 에 반영
-        setVoteA((prev) => {
-          const next = { ...prev };
-          for (const a of apps) {
-            next[a.id] = { likes: a.likes ?? 0, dislikes: a.dislikes ?? 0, myVote: prev[a.id]?.myVote ?? null };
+    // 초기 데이터가 서버에서 안 왔을 때만(예: 직접 마운트) 클라에서 본문 데이터 fetch.
+    // ISR(1h) 로 받은 초기 데이터가 있으면 중복 호출을 피한다.
+    if (!initialRestaurant) {
+      api.getRestaurant(id)
+        .then((r) => {
+          setRestaurant(r);
+          if (r) {
+            setVoteR((prev) => ({
+              ...prev,
+              [r.id]: { likes: r.likes ?? 0, dislikes: r.dislikes ?? 0, myVote: prev[r.id]?.myVote ?? null },
+            }));
           }
-          return next;
-        });
-        setVoteC((prev) => {
-          const next = { ...prev };
-          for (const a of apps) {
-            if (!a.channel_id) continue;
-            next[a.channel_id] = {
-              likes: a.channels?.likes ?? 0,
-              dislikes: a.channels?.dislikes ?? 0,
-              myVote: prev[a.channel_id]?.myVote ?? null,
-            };
-          }
-          return next;
-        });
-      })
-      .catch(() => setApps([]));
+        })
+        .catch(() => setRestaurant(null));
+      api.relatedRestaurants(id).then(setRelated).catch(() => setRelated([]));
+      api.topAppearances(id)
+        .then((apps) => {
+          setApps(apps);
+          setVoteA((prev) => ({ ...prev, ...seedAppearanceVotes(apps, prev) }));
+          setVoteC((prev) => ({ ...prev, ...seedChannelVotes(apps, prev) }));
+        })
+        .catch(() => setApps([]));
+    }
 
     // 내 투표 — 페이지 마운트 시 한 번 fetch. 비로그인은 401 → 무시.
     const mergeMy = (setter: typeof setVoteR) => (mv: Record<string, 1 | -1>) => {
@@ -525,4 +527,26 @@ function ShareBar({
 function extractYouTubeId(url: string): string | null {
   const m = url.match(/(?:youtu\.be\/|v=)([\w-]{11})/);
   return m ? m[1] : null;
+}
+
+// 영상 목록에서 채널/영상 투표 초기 상태 seed. prev 가 있으면 내 투표(myVote)는 보존.
+function seedAppearanceVotes(apps: Appearance[], prev: VoteMap = {}): VoteMap {
+  const next: VoteMap = {};
+  for (const a of apps) {
+    next[a.id] = { likes: a.likes ?? 0, dislikes: a.dislikes ?? 0, myVote: prev[a.id]?.myVote ?? null };
+  }
+  return next;
+}
+
+function seedChannelVotes(apps: Appearance[], prev: VoteMap = {}): VoteMap {
+  const next: VoteMap = {};
+  for (const a of apps) {
+    if (!a.channel_id) continue;
+    next[a.channel_id] = {
+      likes: a.channels?.likes ?? 0,
+      dislikes: a.channels?.dislikes ?? 0,
+      myVote: prev[a.channel_id]?.myVote ?? null,
+    };
+  }
+  return next;
 }

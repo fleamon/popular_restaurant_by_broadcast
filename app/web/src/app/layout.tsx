@@ -49,9 +49,29 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // 사이트 전역 구조화 데이터 — 검색엔진에 사이트 정체성·검색기능을 명시(품질 신호).
+  const siteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "백안맛지도",
+    alternateName: "Baekahn Matjido",
+    url: SITE_URL,
+    description: "TV·유튜브에 소개된 전국 맛집을 지도 한 장으로 찾아보는 서비스",
+    inLanguage: "ko-KR",
+    potentialAction: {
+      "@type": "SearchAction",
+      target: { "@type": "EntryPoint", urlTemplate: `${SITE_URL}/?q={search_term_string}` },
+      "query-input": "required name=search_term_string",
+    },
+  };
+
   return (
     <html lang="ko">
       <body className="min-h-screen">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
+        />
         {/* AdSense loader — 콘텐츠 페이지에서만 로드(admin/login/mypage/blocked 제외). env 비면 미렌더. */}
         <AdSenseLoader />
         <Header />
